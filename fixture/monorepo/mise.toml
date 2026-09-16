@@ -1,2 +1,4 @@
 [tools]
-node = "22.20.0"
+node = "24.21.0"
+# npm 12 is the first version with the min-release-age gate used in .npmrc
+"npm:npm" = "12.0.2"

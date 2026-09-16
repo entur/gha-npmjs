@@ -75,14 +75,22 @@ jobs:
       package_manager: pnpm
 ```
 
-Defaults per package manager:
+Defaults per package manager, each covered by a fixture in [`fixture/`](fixture):
 
-| package_manager | install command |
-| --- | --- |
-| `npm` | `npm ci` |
-| `pnpm` | `pnpm install --frozen-lockfile` |
-| `yarn` | `yarn install --immutable` |
-| `bun` | `bun install --frozen-lockfile` |
+| package_manager | install command | fixture |
+| --- | --- | --- |
+| `npm` | `npm ci` | [`fixture/single-package`](fixture/single-package) |
+| `pnpm` | `pnpm install --frozen-lockfile` | [`fixture/pnpm-package`](fixture/pnpm-package) |
+| `yarn` | `yarn install --immutable` | [`fixture/yarn-package`](fixture/yarn-package) |
+| `bun` | `bun install --frozen-lockfile` | [`fixture/bun-package`](fixture/bun-package) |
+
+Pin the package manager in `mise.toml` alongside node — the workflow installs exactly what you pin:
+
+```toml
+[tools]
+node = "24.21.0"
+pnpm = "12.4.2"
+```
 
 Override with `install_command` and `build_command` when the defaults don't fit. Without `build_command`, the
 `build` script from `package.json` runs if it exists, otherwise the build is skipped.
@@ -206,8 +214,8 @@ in `path` (override with `mise_working_directory`) and fails with an error if no
 ```toml
 # mise.toml
 [tools]
-node = "22.20.0"
-pnpm = "10.18.0"
+node = "24.21.0"
+pnpm = "12.4.2"
 ```
 
 Trusted publishing requires npm >= 11.5.1. If the toolchain resolves an older npm, the workflow installs

@@ -19,8 +19,8 @@ released version to npmjs using [trusted publishing](https://docs.npmjs.com/trus
    ```toml
    # mise.toml
    [tools]
-   node = "22.20.0"
-   pnpm = "10.18.0"
+   node = "24.21.0"
+   pnpm = "12.4.2"
    ```
 
 2. **Trusted publisher on npmjs** — configure the package on npmjs.com with a trusted publisher pointing at

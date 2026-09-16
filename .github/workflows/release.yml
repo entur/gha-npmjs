@@ -175,8 +175,8 @@ jobs:
           if [ -z "$found" ]; then
             echo "::error::No mise configuration found in $(pwd). Add a mise.toml pinning node and your package manager, for example:"
             echo "[tools]"
-            echo "node = \"22.20.0\""
-            echo "pnpm = \"10.18.0\""
+            echo "node = \"24.21.0\""
+            echo "pnpm = \"12.4.2\""
             exit 1
           fi
 

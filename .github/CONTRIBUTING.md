@@ -29,6 +29,6 @@
 
 - Open an issue and ask your question, this may be a strong indication that some documentation is missing
 
-Thanks! :heart: :heart: :heart:
+Thanks!
 
 Team Portal

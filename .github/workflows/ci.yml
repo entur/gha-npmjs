@@ -50,3 +50,26 @@ jobs:
       packages: |
         packages/util
         packages/common
+
+  # One dry run per package manager: mise resolves the pinned tool, the workflow
+  # installs with a frozen lockfile, builds, and publishes through the npm CLI
+  test-release-dry-run-pnpm:
+    uses: ./.github/workflows/release.yml
+    with:
+      path: fixture/pnpm-package
+      package_manager: pnpm
+      dry_run: true
+
+  test-release-dry-run-yarn:
+    uses: ./.github/workflows/release.yml
+    with:
+      path: fixture/yarn-package
+      package_manager: yarn
+      dry_run: true
+
+  test-release-dry-run-bun:
+    uses: ./.github/workflows/release.yml
+    with:
+      path: fixture/bun-package
+      package_manager: bun
+      dry_run: true
