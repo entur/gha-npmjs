@@ -118,7 +118,7 @@ jobs:
 ```
 
 See [Monorepos](../README-release.md#monorepos-release-please-manifest-mode) for the release-please configuration,
-and [`fixture/monorepo`](../fixture/monorepo) for a working layout modelled on
+and [`fixture/monorepo-npm`](../fixture/monorepo-npm) for a working layout modelled on
 [`entur/entur-partner-packages`](https://github.com/entur/entur-partner-packages).
 
 Dependencies and the build run with your package manager; the publish itself always runs through the npm CLI, because

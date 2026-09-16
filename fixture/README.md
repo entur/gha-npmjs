@@ -6,11 +6,11 @@ lockfile, so the workflow's frozen-lockfile install is exercised for real.
 
 | Fixture | Package manager | Covers |
 | --- | --- | --- |
-| [`single-package`](single-package) | npm | `npm ci`, the default single-package path, restricted access and dist-tag overrides |
+| [`npm-package`](npm-package) | npm | `npm ci`, the default single-package path, restricted access and dist-tag overrides |
 | [`pnpm-package`](pnpm-package) | pnpm | `pnpm install --frozen-lockfile` |
 | [`yarn-package`](yarn-package) | yarn 4 (`node-modules` linker) | `yarn install --immutable` |
 | [`bun-package`](bun-package) | bun | `bun install --frozen-lockfile` |
-| [`monorepo`](monorepo) | npm workspaces + lerna | release-please manifest mode, publishing several packages from one release |
+| [`monorepo-npm`](monorepo-npm) | npm workspaces + lerna | release-please manifest mode, publishing several packages from one release |
 | [`monorepo-pnpm`](monorepo-pnpm) | pnpm workspaces | `workspace:*` ranges pinned to the exact version by `pnpm pack` before publish |
 | [`monorepo-yarn`](monorepo-yarn) | yarn 4 workspaces | `workspace:*` ranges pinned to the exact version by `yarn pack` before publish |
 | [`monorepo-bun`](monorepo-bun) | bun workspaces | `workspace:*` ranges pinned to the exact version by `bun pm pack` before publish |
@@ -30,7 +30,7 @@ caught and pulled before any install picks it up. The setting is per package man
 
 | Package manager | File | Setting |
 | --- | --- | --- |
-| npm (>= 12) | [`.npmrc`](single-package/.npmrc) | `min-release-age=5` (days) |
+| npm (>= 12) | [`.npmrc`](npm-package/.npmrc) | `min-release-age=5` (days) |
 | pnpm | [`pnpm-workspace.yaml`](pnpm-package/pnpm-workspace.yaml) | `minimumReleaseAge: 7200` (minutes) |
 | yarn (>= 4.12) | [`.yarnrc.yml`](yarn-package/.yarnrc.yml) | `npmMinimalAgeGate: "5d"` |
 | bun | [`bunfig.toml`](bun-package/bunfig.toml) | `minimumReleaseAge = 432000` (seconds) |

@@ -1,5 +1,5 @@
 {
-  "name": "gha-npmjs-fixture-monorepo",
+  "name": "gha-npmjs-fixture-monorepo-npm",
   "version": "0.0.0",
   "private": true,
   "description": "Fixture monorepo used to test the reusable workflows in this repository. Never published.",

@@ -79,7 +79,7 @@ Defaults per package manager, each covered by a fixture in [`fixture/`](fixture)
 
 | package_manager | install command | fixture |
 | --- | --- | --- |
-| `npm` | `npm ci` | [`fixture/single-package`](fixture/single-package) |
+| `npm` | `npm ci` | [`fixture/npm-package`](fixture/npm-package) |
 | `pnpm` | `pnpm install --frozen-lockfile` | [`fixture/pnpm-package`](fixture/pnpm-package) |
 | `yarn` | `yarn install --immutable` | [`fixture/yarn-package`](fixture/yarn-package) |
 | `bun` | `bun install --frozen-lockfile` | [`fixture/bun-package`](fixture/bun-package) |
@@ -165,7 +165,7 @@ jobs:
         packages/common
 ```
 
-A working example lives in [`fixture/monorepo`](fixture/monorepo), modelled on
+A working example lives in [`fixture/monorepo-npm`](fixture/monorepo-npm), modelled on
 [`entur/entur-partner-packages`](https://github.com/entur/entur-partner-packages).
 
 ## Staged publishing

@@ -19,14 +19,14 @@ jobs:
   test-release-dry-run-npm:
     uses: ./.github/workflows/release.yml
     with:
-      path: fixture/single-package
+      path: fixture/npm-package
       dry_run: true
       package_manager: npm
 
   test-release-dry-run-restricted:
     uses: ./.github/workflows/release.yml
     with:
-      path: fixture/single-package
+      path: fixture/npm-package
       dry_run: true
       access: restricted
       dist_tag: next
@@ -34,18 +34,18 @@ jobs:
 
   # Monorepo dry run: release-please manifest mode with lerna-style workspaces,
   # publishing every package listed in .release-please-manifest.json
-  test-release-dry-run-monorepo:
+  test-release-dry-run-monorepo-npm:
     uses: ./.github/workflows/release.yml
     with:
-      path: fixture/monorepo
+      path: fixture/monorepo-npm
       release_type: manifest
       dry_run: true
 
   # Same monorepo, but with an explicit package list instead of the manifest
-  test-release-dry-run-monorepo-explicit-packages:
+  test-release-dry-run-monorepo-npm-explicit-packages:
     uses: ./.github/workflows/release.yml
     with:
-      path: fixture/monorepo
+      path: fixture/monorepo-npm
       dry_run: true
       packages: |
         packages/util
@@ -105,6 +105,6 @@ jobs:
   test-release-dry-run-staged:
     uses: ./.github/workflows/release.yml
     with:
-      path: fixture/single-package
+      path: fixture/npm-package
       stage: true
       dry_run: true
