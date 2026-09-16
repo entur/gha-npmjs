@@ -73,3 +73,30 @@ jobs:
       path: fixture/bun-package
       package_manager: bun
       dry_run: true
+
+  # Monorepos using the workspace: protocol. The publish step must pack with the
+  # repository's package manager, so the ranges are rewritten to real semver before
+  # the tarball reaches npm
+  test-release-dry-run-monorepo-pnpm:
+    uses: ./.github/workflows/release.yml
+    with:
+      path: fixture/monorepo-pnpm
+      package_manager: pnpm
+      release_type: manifest
+      dry_run: true
+
+  test-release-dry-run-monorepo-yarn:
+    uses: ./.github/workflows/release.yml
+    with:
+      path: fixture/monorepo-yarn
+      package_manager: yarn
+      release_type: manifest
+      dry_run: true
+
+  test-release-dry-run-monorepo-bun:
+    uses: ./.github/workflows/release.yml
+    with:
+      path: fixture/monorepo-bun
+      package_manager: bun
+      release_type: manifest
+      dry_run: true

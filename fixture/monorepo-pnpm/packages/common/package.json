@@ -1,0 +1,16 @@
+{
+  "name": "@entur/gha-npmjs-fixture-pnpm-common",
+  "version": "0.0.0",
+  "description": "Fixture workspace package depending on a sibling through the workspace: protocol. Never published.",
+  "license": "EUPL-1.2",
+  "main": "index.js",
+  "files": [
+    "index.js"
+  ],
+  "scripts": {
+    "build": "node -e \"console.log('common build ok')\""
+  },
+  "dependencies": {
+    "@entur/gha-npmjs-fixture-pnpm-util": "workspace:^"
+  }
+}

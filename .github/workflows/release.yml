@@ -300,6 +300,7 @@ jobs:
 
           published=0
           skipped=0
+          tarball_dir="$RUNNER_TEMP/gha-npmjs-pack"
 
           while IFS= read -r package_dir; do
             [ -z "$package_dir" ] && continue
@@ -329,7 +330,45 @@ jobs:
             fi
 
             echo "::group::Publishing $package_name@$package_version"
-            npm publish --workspaces=false "${publish_args[@]}" "./$package_dir"
+            if [ "$GHA_NPMJS_PACKAGE_MANAGER" = "npm" ]; then
+              # npm has no workspace: protocol to resolve, so publish the directory directly
+              npm publish --workspaces=false "${publish_args[@]}" "./$package_dir"
+            else
+              # pnpm, yarn and bun rewrite `workspace:` ranges into real semver ranges when
+              # they pack. The npm CLI does not understand the protocol and would publish it
+              # verbatim, breaking every consumer, so let the package manager build the
+              # tarball and hand the finished artifact to npm for the OIDC publish.
+              rm -rf "$tarball_dir"
+              mkdir -p "$tarball_dir"
+
+              case "$GHA_NPMJS_PACKAGE_MANAGER" in
+                pnpm) (cd "$package_dir" && pnpm pack --pack-destination "$tarball_dir") ;;
+                yarn) (cd "$package_dir" && yarn pack --out "$tarball_dir/package.tgz") ;;
+                bun)  (cd "$package_dir" && bun pm pack --destination "$tarball_dir") ;;
+              esac
+
+              tarball="$(find "$tarball_dir" -name '*.tgz' -maxdepth 1 | head -n1)"
+              if [ -z "$tarball" ]; then
+                echo "::error::$GHA_NPMJS_PACKAGE_MANAGER pack produced no tarball for $package_name"
+                exit 1
+              fi
+
+              # A `workspace:` range that survived packing would be published verbatim and
+              # break every consumer install, so refuse to upload the tarball
+              packed_workspace_ranges="$(tar -xzOf "$tarball" package/package.json \
+                | jq -r '[.dependencies, .devDependencies, .peerDependencies, .optionalDependencies]
+                         | map(select(. != null) | to_entries) | flatten
+                         | map(select(.value | tostring | startswith("workspace:")))
+                         | map("\(.key)@\(.value)") | join(", ")')"
+
+              if [ -n "$packed_workspace_ranges" ]; then
+                echo "::error::$package_name was packed with unresolved workspace: ranges ($packed_workspace_ranges). Publishing it would break every consumer install."
+                exit 1
+              fi
+
+              echo "Publishing tarball $tarball packed by $GHA_NPMJS_PACKAGE_MANAGER"
+              npm publish --workspaces=false "${publish_args[@]}" "$tarball"
+            fi
             echo "::endgroup::"
 
             if [ "$GHA_NPMJS_DRY_RUN" = "true" ]; then

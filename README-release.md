@@ -168,6 +168,33 @@ jobs:
 A working example lives in [`fixture/monorepo`](fixture/monorepo), modelled on
 [`entur/entur-partner-packages`](https://github.com/entur/entur-partner-packages).
 
+## How the publish step handles `workspace:` dependencies
+
+pnpm, yarn and bun let workspace packages depend on each other with the `workspace:` protocol, which they rewrite into
+a real semver range when packing:
+
+```jsonc
+// packages/app-shell/package.json, in the repository
+"dependencies": { "@entur/common": "workspace:^" }
+
+// the same file inside the published tarball
+"dependencies": { "@entur/common": "^13.1.0" }
+```
+
+The npm CLI does not understand the protocol — `npm pack` copies `workspace:^` into the tarball verbatim, and every
+consumer install of that version fails. So the publish step adapts to `package_manager`:
+
+| package_manager | How the tarball is built | How it is published |
+| --- | --- | --- |
+| `npm` | not applicable, npm cannot use `workspace:` ranges | `npm publish ./<package>` |
+| `pnpm` | `pnpm pack` | `npm publish <tarball>` |
+| `yarn` | `yarn pack` | `npm publish <tarball>` |
+| `bun` | `bun pm pack` | `npm publish <tarball>` |
+
+Publishing a prebuilt tarball keeps trusted publishing and provenance intact, since the npm CLI still performs the
+upload. Nothing changes for repositories that pin internal dependencies to exact versions — they simply have no
+`workspace:` ranges to rewrite.
+
 ## Publishing a scoped, private package
 
 ```yml
