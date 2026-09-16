@@ -9,11 +9,11 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@entur/gha-npmjs-fixture-yarn-common@workspace:packages/common"
   dependencies:
-    "@entur/gha-npmjs-fixture-yarn-util": "workspace:^"
+    "@entur/gha-npmjs-fixture-yarn-util": "workspace:*"
   languageName: unknown
   linkType: soft
 
-"@entur/gha-npmjs-fixture-yarn-util@workspace:^, @entur/gha-npmjs-fixture-yarn-util@workspace:packages/util":
+"@entur/gha-npmjs-fixture-yarn-util@workspace:*, @entur/gha-npmjs-fixture-yarn-util@workspace:packages/util":
   version: 0.0.0-use.local
   resolution: "@entur/gha-npmjs-fixture-yarn-util@workspace:packages/util"
   dependencies:

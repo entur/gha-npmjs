@@ -100,3 +100,11 @@ jobs:
       package_manager: bun
       release_type: manifest
       dry_run: true
+
+  # Staged publishing: same upload path, held on npmjs for approval instead of going live
+  test-release-dry-run-staged:
+    uses: ./.github/workflows/release.yml
+    with:
+      path: fixture/single-package
+      stage: true
+      dry_run: true

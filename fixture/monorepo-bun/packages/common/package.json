@@ -11,6 +11,6 @@
     "build": "node -e \"console.log('common build ok')\""
   },
   "dependencies": {
-    "@entur/gha-npmjs-fixture-bun-util": "workspace:^"
+    "@entur/gha-npmjs-fixture-bun-util": "workspace:*"
   }
 }

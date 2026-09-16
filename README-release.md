@@ -168,6 +168,44 @@ jobs:
 A working example lives in [`fixture/monorepo`](fixture/monorepo), modelled on
 [`entur/entur-partner-packages`](https://github.com/entur/entur-partner-packages).
 
+## Staged publishing
+
+Set `stage: true` and the workflow uploads with [`npm stage publish`](https://docs.npmjs.com/staged-publishing)
+instead of `npm publish`. The tarball reaches npmjs but stays invisible to consumers until someone approves it — the
+2FA proof-of-presence moves from publish time to approval time.
+
+```yml
+jobs:
+  release:
+    uses: entur/gha-npmjs/.github/workflows/release.yml@v1
+    with:
+      stage: true
+```
+
+Approving, after the workflow has run:
+
+```sh
+npm stage list                 # stage ids and versions, no 2FA needed
+npm stage view <stage-id>      # inspect before approving
+npm stage approve <stage-id>   # publishes it for real, requires 2FA
+npm stage reject <stage-id>    # discards it, requires 2FA
+```
+
+The **Staged Packages** tab on npmjs.com does the same from the browser. The job summary links out to both.
+
+Worth knowing before enabling it:
+
+- **npm >= 11.15.0 is required.** The workflow raises its own npm floor from 11.5.1 to 11.15.0 when `stage: true`,
+  and installs a newer npm if the toolchain ships an older one.
+- **The package must already exist on npmjs.** A brand new package cannot be staged, so its first version still has
+  to be published normally.
+- **Re-runs are handled.** A staged version is not on the registry, so `npm view` cannot see it and `skip_published`
+  alone would stage it twice. The workflow also checks `npm stage list` and skips versions already awaiting approval.
+- **A release with several packages stages them individually.** Each gets its own stage id and needs its own
+  approval; there is no single "approve this release" action.
+- Provenance works the same way — `--provenance` is passed to `npm stage publish` and the attestation follows the
+  package when it is approved.
+
 ## How the publish step handles `workspace:` dependencies
 
 pnpm, yarn and bun let workspace packages depend on each other with the `workspace:` protocol, which they rewrite into
@@ -175,13 +213,17 @@ a real semver range when packing:
 
 ```jsonc
 // packages/app-shell/package.json, in the repository
-"dependencies": { "@entur/common": "workspace:^" }
+"dependencies": { "@entur/common": "workspace:*" }
 
 // the same file inside the published tarball
-"dependencies": { "@entur/common": "^13.1.0" }
+"dependencies": { "@entur/common": "13.1.0" }
 ```
 
-The npm CLI does not understand the protocol — `npm pack` copies `workspace:^` into the tarball verbatim, and every
+Which range gets published depends on the specifier: `workspace:*` pins the exact version, `workspace:~` publishes
+`~13.1.0` and `workspace:^` publishes `^13.1.0`. The fixtures use `workspace:*`, so consumers get exactly the
+combination that was released and tested together.
+
+The npm CLI does not understand the protocol — `npm pack` copies `workspace:*` into the tarball verbatim, and every
 consumer install of that version fails. So the publish step adapts to `package_manager`:
 
 | package_manager | How the tarball is built | How it is published |

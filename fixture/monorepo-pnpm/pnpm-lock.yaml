@@ -11,7 +11,7 @@ importers:
   packages/common:
     dependencies:
       '@entur/gha-npmjs-fixture-pnpm-util':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../util
 
   packages/util:

@@ -55,6 +55,10 @@ on:
         description: "Publish with a provenance attestation (npm publish --provenance). Default: true"
         type: boolean
         default: true
+      stage:
+        description: "Stage the release on npmjs instead of publishing it straight away (npm stage publish). A staged version is held until someone approves it on npmjs.com or with `npm stage approve <stage-id>`, which is where the 2FA prompt happens. Requires npm >= 11.15.0, and the package must already exist on npmjs — new packages cannot be staged. Default: false"
+        type: boolean
+        default: false
       dry_run:
         description: "Run the publish step with --dry-run and skip the release-please job. Use to verify the setup from a pull request."
         type: boolean
@@ -127,6 +131,7 @@ jobs:
       GHA_NPMJS_MANIFEST_FILE: ${{ inputs.manifest_file }}
       GHA_NPMJS_RELEASE_TYPE: ${{ inputs.release_type }}
       GHA_NPMJS_SKIP_PUBLISHED: ${{ inputs.skip_published }}
+      GHA_NPMJS_STAGE: ${{ inputs.stage }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -193,11 +198,16 @@ jobs:
 
       - name: Setup npm CLI
         run: |
-          # Trusted publishing (OIDC) requires npm >= 11.5.1
+          # Trusted publishing (OIDC) requires npm >= 11.5.1, staging requires npm >= 11.15.0
           [ -n "${{ runner.debug }}" ] && set -x
           set -euo pipefail
 
-          required="11.5.1"
+          # Trusted publishing needs 11.5.1, `npm stage publish` needs 11.15.0
+          if [ "$GHA_NPMJS_STAGE" = "true" ]; then
+            required="11.15.0"
+          else
+            required="11.5.1"
+          fi
           current="$(npm --version)"
           echo "npm version from toolchain: $current"
 
@@ -282,17 +292,29 @@ jobs:
 
           publish_args=("--access" "$GHA_NPMJS_ACCESS" "--tag" "$GHA_NPMJS_DIST_TAG")
 
+          # `npm stage publish` uploads the same tarball but holds it on npmjs until someone
+          # approves it, which is where the 2FA proof-of-presence happens
+          if [ "$GHA_NPMJS_STAGE" = "true" ]; then
+            publish_command=(npm stage publish)
+            action_past="staged"
+            action_title="Stage"
+          else
+            publish_command=(npm publish)
+            action_past="published"
+            action_title="Publish"
+          fi
+
           if [ "$GHA_NPMJS_PROVENANCE" = "true" ]; then
             publish_args+=("--provenance")
           fi
 
           if [ "$GHA_NPMJS_DRY_RUN" = "true" ]; then
             publish_args+=("--dry-run")
-            echo "::notice::Dry run, nothing is published to npmjs"
+            echo "::notice::Dry run, nothing is $action_past on npmjs"
           fi
 
           {
-            echo "### npmjs publish"
+            echo "### npmjs $action_title"
             echo ""
             echo "| Package | Version | Result |"
             echo "| --- | --- | --- |"
@@ -329,10 +351,20 @@ jobs:
               continue
             fi
 
-            echo "::group::Publishing $package_name@$package_version"
+            # A staged version is not on the registry yet, so `npm view` cannot see it. Without
+            # this check a re-run would stage the same version twice.
+            if [ "$GHA_NPMJS_STAGE" = "true" ] && [ "$GHA_NPMJS_SKIP_PUBLISHED" = "true" ] && [ "$GHA_NPMJS_DRY_RUN" != "true" ] \
+              && npm stage list "$package_name@$package_version" 2>/dev/null | grep -q "$package_version"; then
+              echo "Skipping $package_name@$package_version: already staged and waiting for approval"
+              echo "| $package_name | $package_version | skipped (already staged) |" >> "$GITHUB_STEP_SUMMARY"
+              skipped=$((skipped + 1))
+              continue
+            fi
+
+            echo "::group::Uploading $package_name@$package_version"
             if [ "$GHA_NPMJS_PACKAGE_MANAGER" = "npm" ]; then
               # npm has no workspace: protocol to resolve, so publish the directory directly
-              npm publish --workspaces=false "${publish_args[@]}" "./$package_dir"
+              "${publish_command[@]}" --workspaces=false "${publish_args[@]}" "./$package_dir"
             else
               # pnpm, yarn and bun rewrite `workspace:` ranges into real semver ranges when
               # they pack. The npm CLI does not understand the protocol and would publish it
@@ -366,20 +398,24 @@ jobs:
                 exit 1
               fi
 
-              echo "Publishing tarball $tarball packed by $GHA_NPMJS_PACKAGE_MANAGER"
-              npm publish --workspaces=false "${publish_args[@]}" "$tarball"
+              echo "Uploading tarball $tarball packed by $GHA_NPMJS_PACKAGE_MANAGER"
+              "${publish_command[@]}" --workspaces=false "${publish_args[@]}" "$tarball"
             fi
             echo "::endgroup::"
 
             if [ "$GHA_NPMJS_DRY_RUN" = "true" ]; then
               echo "| $package_name | $package_version | dry run |" >> "$GITHUB_STEP_SUMMARY"
             else
-              echo "| $package_name | $package_version | published |" >> "$GITHUB_STEP_SUMMARY"
+              echo "| $package_name | $package_version | $action_past |" >> "$GITHUB_STEP_SUMMARY"
             fi
             published=$((published + 1))
           done <<< "$GHA_NPMJS_PACKAGE_DIRS"
 
           {
             echo ""
-            echo "$published published, $skipped skipped. Dist-tag \`$GHA_NPMJS_DIST_TAG\`, access \`$GHA_NPMJS_ACCESS\`, provenance \`$GHA_NPMJS_PROVENANCE\`, dry run \`$GHA_NPMJS_DRY_RUN\`."
+            echo "$published $action_past, $skipped skipped. Dist-tag \`$GHA_NPMJS_DIST_TAG\`, access \`$GHA_NPMJS_ACCESS\`, provenance \`$GHA_NPMJS_PROVENANCE\`, dry run \`$GHA_NPMJS_DRY_RUN\`."
+            if [ "$GHA_NPMJS_STAGE" = "true" ] && [ "$published" -gt 0 ] && [ "$GHA_NPMJS_DRY_RUN" != "true" ]; then
+              echo ""
+              echo "Nothing is live yet. Approve the staged versions on the **Staged Packages** tab on npmjs.com, or with \`npm stage approve <stage-id>\` (\`npm stage list\` shows the ids). Both require 2FA. \`npm stage reject <stage-id>\` discards them."
+            fi
           } >> "$GITHUB_STEP_SUMMARY"

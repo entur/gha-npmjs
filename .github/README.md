@@ -125,6 +125,12 @@ Dependencies and the build run with your package manager; the publish itself alw
 trusted publishing is an npm CLI feature. The workflow upgrades npm automatically when the toolchain ships a version
 older than 11.5.1.
 
+### Holding a release for approval
+
+`stage: true` uploads with `npm stage publish`, so versions wait on npmjs until someone approves them with
+`npm stage approve <stage-id>` or the **Staged Packages** tab. See
+[Staged publishing](../README-release.md#staged-publishing).
+
 ### Setting up the trusted publisher
 
 On npmjs.com, open the package → **Settings** → **Trusted publisher** → GitHub Actions, and fill in:
