@@ -1,0 +1,13 @@
+{
+  "name": "gha-npmjs-fixture-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Fixture monorepo used to test the reusable workflows in this repository. Never published.",
+  "license": "EUPL-1.2",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present"
+  }
+}
