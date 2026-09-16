@@ -1,0 +1,29 @@
+name: create release
+on:
+  push:
+    branches:
+      - main
+permissions:
+  pull-requests: write
+  contents: write
+  issues: write
+  actions: read
+  id-token: write
+jobs:
+  release:
+    uses: entur/gha-meta/.github/workflows/release.yml@c14eef7f4d90ed1be2c1df4dfb0927322bcbb3ba # v1.9.0
+  update-docs:
+    needs: release
+    if: needs.release.outputs.releases_created == 'false' && needs.release.outputs.prs_created == 'true'
+    strategy:
+      max-parallel: 1 # Can't have them commit in parallel
+      matrix:
+        files:
+          - workflow: .github/workflows/release.yml
+            readme: README-release.md
+    uses: entur/gha-meta/.github/workflows/auto-doc.yml@c14eef7f4d90ed1be2c1df4dfb0927322bcbb3ba # v1.9.0
+    with:
+      commit_default_author: 'github_actions'
+      target_branch: 'release-please--branches--main'
+      workflow_file: ${{ matrix.files.workflow }}
+      readme_file: ${{ matrix.files.readme }}

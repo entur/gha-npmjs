@@ -1,0 +1,52 @@
+name: Entur/Npmjs/CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # Required by the publish job in release.yml
+
+jobs:
+  verify-pr:
+    name: Verify PR
+    if: ${{ github.event_name == 'pull_request' }}
+    uses: entur/gha-meta/.github/workflows/verify-pr.yml@c14eef7f4d90ed1be2c1df4dfb0927322bcbb3ba # v1.9.0
+
+  # Dry run against the fixture package: installs with mise, builds, and runs
+  # `npm publish --dry-run` without touching the registry.
+  test-release-dry-run-npm:
+    uses: ./.github/workflows/release.yml
+    with:
+      path: fixture/single-package
+      dry_run: true
+      package_manager: npm
+
+  test-release-dry-run-restricted:
+    uses: ./.github/workflows/release.yml
+    with:
+      path: fixture/single-package
+      dry_run: true
+      access: restricted
+      dist_tag: next
+      provenance: false
+
+  # Monorepo dry run: release-please manifest mode with lerna-style workspaces,
+  # publishing every package listed in .release-please-manifest.json
+  test-release-dry-run-monorepo:
+    uses: ./.github/workflows/release.yml
+    with:
+      path: fixture/monorepo
+      release_type: manifest
+      dry_run: true
+
+  # Same monorepo, but with an explicit package list instead of the manifest
+  test-release-dry-run-monorepo-explicit-packages:
+    uses: ./.github/workflows/release.yml
+    with:
+      path: fixture/monorepo
+      dry_run: true
+      packages: |
+        packages/util
+        packages/common
