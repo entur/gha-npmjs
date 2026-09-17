@@ -168,44 +168,6 @@ jobs:
 A working example lives in [`fixture/monorepo-npm`](fixture/monorepo-npm), modelled on
 [`entur/entur-partner-packages`](https://github.com/entur/entur-partner-packages).
 
-## Staged publishing
-
-Set `stage: true` and the workflow uploads with [`npm stage publish`](https://docs.npmjs.com/staged-publishing)
-instead of `npm publish`. The tarball reaches npmjs but stays invisible to consumers until someone approves it — the
-2FA proof-of-presence moves from publish time to approval time.
-
-```yml
-jobs:
-  release:
-    uses: entur/gha-npmjs/.github/workflows/release.yml@v1
-    with:
-      stage: true
-```
-
-Approving, after the workflow has run:
-
-```sh
-npm stage list                 # stage ids and versions, no 2FA needed
-npm stage view <stage-id>      # inspect before approving
-npm stage approve <stage-id>   # publishes it for real, requires 2FA
-npm stage reject <stage-id>    # discards it, requires 2FA
-```
-
-The **Staged Packages** tab on npmjs.com does the same from the browser. The job summary links out to both.
-
-Worth knowing before enabling it:
-
-- **npm >= 11.15.0 is required.** The workflow raises its own npm floor from 11.5.1 to 11.15.0 when `stage: true`,
-  and installs a newer npm if the toolchain ships an older one.
-- **The package must already exist on npmjs.** A brand new package cannot be staged, so its first version still has
-  to be published normally.
-- **Re-runs are handled.** A staged version is not on the registry, so `npm view` cannot see it and `skip_published`
-  alone would stage it twice. The workflow also checks `npm stage list` and skips versions already awaiting approval.
-- **A release with several packages stages them individually.** Each gets its own stage id and needs its own
-  approval; there is no single "approve this release" action.
-- Provenance works the same way — `--provenance` is passed to `npm stage publish` and the attestation follows the
-  package when it is approved.
-
 ## How the publish step handles `workspace:` dependencies
 
 pnpm, yarn and bun let workspace packages depend on each other with the `workspace:` protocol, which they rewrite into
@@ -237,6 +199,13 @@ Publishing a prebuilt tarball keeps trusted publishing and provenance intact, si
 upload. Nothing changes for repositories that pin internal dependencies to exact versions — they simply have no
 `workspace:` ranges to rewrite.
 
+### Publish order
+
+Packages are published dependencies first, not in manifest order: the workflow reads the dependency graph of the
+packages taking part in the release and topologically sorts them. A package is therefore never published before a
+sibling it depends on, so a failure partway through a monorepo release cannot leave a released package pointing at a
+version that does not exist on npmjs. A dependency cycle between released packages fails the release.
+
 ## Publishing a prerelease dist-tag
 
 ```yml
@@ -254,8 +223,15 @@ jobs:
 on:
   pull_request:
 
+# This workflow calls release.yml, which statically references release-please even though
+# `dry_run: true` skips it. GitHub validates the whole call graph when the run starts, and a
+# called workflow can never request more than its caller grants, so these scopes are required
+# even though nothing writes with them. Omitting them ends the run in `startup_failure` with
+# zero jobs and no error on any job.
 permissions:
-  contents: read
+  contents: write
+  issues: write
+  pull-requests: write
   id-token: write
 
 jobs:
@@ -267,8 +243,10 @@ jobs:
 
 ## mise configuration
 
-The workflow looks for `mise.toml`, `.mise.toml`, `mise/config.toml`, `.config/mise/config.toml` or `.tool-versions`
-in `path` (override with `mise_working_directory`) and fails with an error if none is found.
+The workflow looks for `mise.local.toml`, `mise.toml`, `.mise.toml`, `mise/config.toml`, `.mise/config.toml`,
+`.config/mise.toml`, `.config/mise/config.toml`, `.tool-versions`, or a `conf.d` directory holding `.toml` files
+(`mise/conf.d`, `.mise/conf.d`, `.config/mise/conf.d`) — every location mise itself resolves from. It searches
+`mise_working_directory`, falling back to `path`, and fails with an error if none is found.
 
 ```toml
 # mise.toml

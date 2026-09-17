@@ -2,10 +2,23 @@ name: Entur/Npmjs/CI
 
 on:
   pull_request:
+    # `edited` is not in the default set (opened, synchronize, reopened), so without it a PR
+    # title fixed after a failed verify-pr run stays red until an unrelated commit is pushed.
+    # Re-running the failed run does not help either: it replays the original webhook payload,
+    # which still carries the old title.
+    types: [opened, synchronize, reopened, edited]
   workflow_dispatch:
 
+# A called workflow can never request more than its caller grants, and GitHub validates
+# the whole call graph when the run starts, not when a job is reached. Every dry-run job
+# below calls release.yml, which statically references entur/gha-meta's release.yml
+# (contents/issues/pull-requests: write) even though its release job is gated behind
+# `if: !inputs.dry_run` and never executes here. Without these scopes the run ends in
+# startup_failure with zero jobs.
 permissions:
-  contents: read
+  contents: write # entur/gha-meta release-please, via release.yml
+  issues: write # entur/gha-meta release-please, via release.yml
+  pull-requests: write # entur/gha-meta release-please and verify-pr
   id-token: write # Required by the publish job in release.yml
 
 jobs:
@@ -40,15 +53,17 @@ jobs:
       release_type: manifest
       dry_run: true
 
-  # Same monorepo, but with an explicit package list instead of the manifest
+  # Same monorepo, but with an explicit package list instead of the manifest.
+  # Listed dependent-first on purpose: common depends on util, so the publish step has to
+  # reorder them. The step summary must show util published before common.
   test-release-dry-run-monorepo-npm-explicit-packages:
     uses: ./.github/workflows/release.yml
     with:
       path: fixture/monorepo-npm
       dry_run: true
       packages: |
-        packages/util
         packages/common
+        packages/util
 
   # One dry run per package manager: mise resolves the pinned tool, the workflow
   # installs with a frozen lockfile, builds, and publishes through the npm CLI
@@ -98,12 +113,4 @@ jobs:
       path: fixture/monorepo-bun
       package_manager: bun
       release_type: manifest
-      dry_run: true
-
-  # Staged publishing: same upload path, held on npmjs for approval instead of going live
-  test-release-dry-run-staged:
-    uses: ./.github/workflows/release.yml
-    with:
-      path: fixture/npm-package
-      stage: true
       dry_run: true

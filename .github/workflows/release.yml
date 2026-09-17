@@ -51,10 +51,6 @@ on:
         description: "Publish with a provenance attestation (npm publish --provenance). Default: true"
         type: boolean
         default: true
-      stage:
-        description: "Stage the release on npmjs instead of publishing it straight away (npm stage publish). A staged version is held until someone approves it on npmjs.com or with `npm stage approve <stage-id>`, which is where the 2FA prompt happens. Requires npm >= 11.15.0, and the package must already exist on npmjs — new packages cannot be staged. Default: false"
-        type: boolean
-        default: false
       dry_run:
         description: "Run the publish step with --dry-run and skip the release-please job. Use to verify the setup from a pull request."
         type: boolean
@@ -126,8 +122,29 @@ jobs:
       GHA_NPMJS_MANIFEST_FILE: ${{ inputs.manifest_file }}
       GHA_NPMJS_RELEASE_TYPE: ${{ inputs.release_type }}
       GHA_NPMJS_SKIP_PUBLISHED: ${{ inputs.skip_published }}
-      GHA_NPMJS_STAGE: ${{ inputs.stage }}
+      GHA_NPMJS_RELEASE_PATH: ${{ inputs.path }}
     steps:
+      - name: Verify the release tag is known
+        if: ${{ !inputs.dry_run }}
+        # The checkout below has nothing to cd into yet
+        working-directory: ${{ github.workspace }}
+        env:
+          GHA_NPMJS_TAG_NAME: ${{ needs.release.outputs.tag_name }}
+        run: |
+          # release-please reports a tag per released path and returns an empty string when the
+          # lookup misses. actions/checkout reads an empty ref as "the default branch", so without
+          # this guard a missing tag silently builds and publishes the head of main under the
+          # released version number.
+          [ -n "${{ runner.debug }}" ] && set -x
+          set -euo pipefail
+
+          if [ -z "$GHA_NPMJS_TAG_NAME" ]; then
+            echo "::error::release-please reported a release but no tag_name. With release_type=manifest this usually means 'path' ($GHA_NPMJS_RELEASE_PATH) is not one of the released paths. Refusing to publish, since checking out an empty ref would build the default branch instead of the release."
+            exit 1
+          fi
+
+          echo "Building release tag $GHA_NPMJS_TAG_NAME"
+
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -158,13 +175,32 @@ jobs:
           [ -n "${{ runner.debug }}" ] && set -x
           set -euo pipefail
 
+          # Every location mise itself resolves a configuration from, in mise's own precedence
+          # order. Anything mise-action would accept has to be accepted here too, or a valid
+          # repository is rejected before mise ever runs.
           found=""
-          for candidate in mise.toml .mise.toml mise/config.toml .config/mise/config.toml .tool-versions; do
+          for candidate in \
+            mise.local.toml \
+            mise.toml .mise.toml \
+            mise/config.toml .mise/config.toml \
+            .config/mise.toml .config/mise/config.toml \
+            .tool-versions
+          do
             if [ -f "$candidate" ]; then
               found="$candidate"
               break
             fi
           done
+
+          # conf.d directories hold the same configuration split across several files
+          if [ -z "$found" ]; then
+            for candidate in mise/conf.d .mise/conf.d .config/mise/conf.d; do
+              if compgen -G "$candidate/*.toml" > /dev/null; then
+                found="$candidate"
+                break
+              fi
+            done
+          fi
 
           if [ -z "$found" ]; then
             echo "::error::No mise configuration found in $(pwd). Add a mise.toml pinning node and your package manager, for example:"
@@ -175,7 +211,11 @@ jobs:
           fi
 
           echo "Using mise configuration: $found"
-          cat "$found"
+          if [ -d "$found" ]; then
+            cat "$found"/*.toml
+          else
+            cat "$found"
+          fi
 
       - name: Setup toolchain with mise
         uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
@@ -187,16 +227,11 @@ jobs:
 
       - name: Setup npm CLI
         run: |
-          # Trusted publishing (OIDC) requires npm >= 11.5.1, staging requires npm >= 11.15.0
+          # Trusted publishing (OIDC) requires npm >= 11.5.1
           [ -n "${{ runner.debug }}" ] && set -x
           set -euo pipefail
 
-          # Trusted publishing needs 11.5.1, `npm stage publish` needs 11.15.0
-          if [ "$GHA_NPMJS_STAGE" = "true" ]; then
-            required="11.15.0"
-          else
-            required="11.5.1"
-          fi
+          required="11.5.1"
           current="$(npm --version)"
           echo "npm version from toolchain: $current"
 
@@ -250,6 +285,58 @@ jobs:
           [ -n "${{ runner.debug }}" ] && set -x
           set -euo pipefail
 
+          # Publish a package only after every sibling it depends on, so a failure partway through
+          # can never leave a released package pointing at a version that was never published.
+          # pnpm, yarn and bun pin `workspace:*` to the exact sibling version at pack time and the
+          # npm fixtures pin exact versions by hand, so this applies to every package manager.
+          sort_topologically() {
+            local dirs="$1"
+            local names_json edges ordered tsort_stderr
+
+            # name -> directory, for every package taking part in this release
+            names_json="$(
+              while IFS= read -r dir; do
+                [ -z "$dir" ] && continue
+                jq --arg dir "$dir" '{(.name): $dir}' "$dir/package.json"
+              done <<< "$dirs" | jq -s 'add // {}'
+            )"
+
+            # One "<dependency> <dependent>" edge per dependency that is itself being released
+            edges="$(
+              while IFS= read -r dir; do
+                [ -z "$dir" ] && continue
+                jq -r --argjson names "$names_json" --arg dir "$dir" '
+                  [.dependencies, .devDependencies, .peerDependencies, .optionalDependencies]
+                  | map(select(. != null) | keys) | flatten | unique
+                  | map(select($names[.] != null and $names[.] != $dir) | "\($names[.]) \($dir)")
+                  | .[]' "$dir/package.json"
+              done <<< "$dirs"
+            )"
+
+            # Nothing depends on anything else, so the given order is already safe
+            if [ -z "$edges" ]; then
+              echo "$dirs"
+              return 0
+            fi
+
+            # GNU tsort exits 1 on a cycle, BSD tsort only warns on stderr; treat either as fatal
+            tsort_stderr="$(mktemp)"
+            if ! ordered="$(tsort <<< "$edges" 2>"$tsort_stderr")" || [ -s "$tsort_stderr" ]; then
+              echo "::error::The packages being released depend on each other in a cycle, so there is no safe publish order."
+              cat "$tsort_stderr" >&2
+              echo "$edges" >&2
+              rm -f "$tsort_stderr"
+              return 1
+            fi
+            rm -f "$tsort_stderr"
+
+            # tsort only knows packages that appear in an edge; keep the rest in their original order
+            {
+              echo "$ordered"
+              grep -vxF -f <(echo "$ordered") <<< "$dirs" || true
+            } | sed '/^[[:space:]]*$/d'
+          }
+
           if [ -n "$GHA_NPMJS_PACKAGES" ]; then
             package_dirs="$(echo "$GHA_NPMJS_PACKAGES" | sed '/^[[:space:]]*$/d')"
             echo "Publishing the packages given in the 'packages' input"
@@ -264,6 +351,18 @@ jobs:
             package_dirs="."
           fi
 
+          # Every package.json has to exist before the dependency graph can be read
+          while IFS= read -r package_dir; do
+            [ -z "$package_dir" ] && continue
+            if [ ! -f "$package_dir/package.json" ]; then
+              echo "::error::No package.json in $package_dir"
+              exit 1
+            fi
+          done <<< "$package_dirs"
+
+          package_dirs="$(sort_topologically "$package_dirs")"
+
+          echo "Publish order (dependencies first):"
           echo "$package_dirs"
           {
             echo "package_dirs<<EOF"
@@ -281,29 +380,17 @@ jobs:
 
           publish_args=("--access" "public" "--tag" "$GHA_NPMJS_DIST_TAG")
 
-          # `npm stage publish` uploads the same tarball but holds it on npmjs until someone
-          # approves it, which is where the 2FA proof-of-presence happens
-          if [ "$GHA_NPMJS_STAGE" = "true" ]; then
-            publish_command=(npm stage publish)
-            action_past="staged"
-            action_title="Stage"
-          else
-            publish_command=(npm publish)
-            action_past="published"
-            action_title="Publish"
-          fi
-
           if [ "$GHA_NPMJS_PROVENANCE" = "true" ]; then
             publish_args+=("--provenance")
           fi
 
           if [ "$GHA_NPMJS_DRY_RUN" = "true" ]; then
             publish_args+=("--dry-run")
-            echo "::notice::Dry run, nothing is $action_past on npmjs"
+            echo "::notice::Dry run, nothing is published on npmjs"
           fi
 
           {
-            echo "### npmjs $action_title"
+            echo "### npmjs Publish"
             echo ""
             echo "| Package | Version | Result |"
             echo "| --- | --- | --- |"
@@ -336,16 +423,6 @@ jobs:
             if [ "$GHA_NPMJS_SKIP_PUBLISHED" = "true" ] && npm view "$package_name@$package_version" version > /dev/null 2>&1; then
               echo "Skipping $package_name@$package_version: already published"
               echo "| $package_name | $package_version | skipped (already published) |" >> "$GITHUB_STEP_SUMMARY"
-              skipped=$((skipped + 1))
-              continue
-            fi
-
-            # A staged version is not on the registry yet, so `npm view` cannot see it. Without
-            # this check a re-run would stage the same version twice.
-            if [ "$GHA_NPMJS_STAGE" = "true" ] && [ "$GHA_NPMJS_SKIP_PUBLISHED" = "true" ] && [ "$GHA_NPMJS_DRY_RUN" != "true" ] \
-              && npm stage list "$package_name@$package_version" 2>/dev/null | grep -q "$package_version"; then
-              echo "Skipping $package_name@$package_version: already staged and waiting for approval"
-              echo "| $package_name | $package_version | skipped (already staged) |" >> "$GITHUB_STEP_SUMMARY"
               skipped=$((skipped + 1))
               continue
             fi
@@ -391,22 +468,18 @@ jobs:
               publish_target="$tarball"
             fi
 
-            "${publish_command[@]}" --workspaces=false "${publish_args[@]}" "$publish_target"
+            npm publish --workspaces=false "${publish_args[@]}" "$publish_target"
             echo "::endgroup::"
 
             if [ "$GHA_NPMJS_DRY_RUN" = "true" ]; then
               echo "| $package_name | $package_version | dry run |" >> "$GITHUB_STEP_SUMMARY"
             else
-              echo "| $package_name | $package_version | $action_past |" >> "$GITHUB_STEP_SUMMARY"
+              echo "| $package_name | $package_version | published |" >> "$GITHUB_STEP_SUMMARY"
             fi
             published=$((published + 1))
           done <<< "$GHA_NPMJS_PACKAGE_DIRS"
 
           {
             echo ""
-            echo "$published $action_past, $skipped skipped. Dist-tag \`$GHA_NPMJS_DIST_TAG\`, provenance \`$GHA_NPMJS_PROVENANCE\`, dry run \`$GHA_NPMJS_DRY_RUN\`."
-            if [ "$GHA_NPMJS_STAGE" = "true" ] && [ "$published" -gt 0 ] && [ "$GHA_NPMJS_DRY_RUN" != "true" ]; then
-              echo ""
-              echo "Nothing is live yet. Approve the staged versions on the **Staged Packages** tab on npmjs.com, or with \`npm stage approve <stage-id>\` (\`npm stage list\` shows the ids). Both require 2FA. \`npm stage reject <stage-id>\` discards them."
-            fi
+            echo "$published published, $skipped skipped. Dist-tag \`$GHA_NPMJS_DIST_TAG\`, provenance \`$GHA_NPMJS_PROVENANCE\`, dry run \`$GHA_NPMJS_DRY_RUN\`."
           } >> "$GITHUB_STEP_SUMMARY"
