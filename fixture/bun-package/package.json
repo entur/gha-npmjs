@@ -1,0 +1,16 @@
+{
+  "name": "@entur/gha-npmjs-fixture-bun",
+  "version": "0.0.0",
+  "description": "Fixture package used to test the bun path of the reusable workflows. Never published.",
+  "license": "EUPL-1.2",
+  "main": "index.js",
+  "files": [
+    "index.js"
+  ],
+  "scripts": {
+    "build": "node -e \"console.log('bun build ok')\""
+  },
+  "dependencies": {
+    "tslib": "2.8.1"
+  }
+}

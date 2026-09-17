@@ -1,0 +1,8 @@
+packages:
+  - "packages/*"
+
+# Wait 5 days (7200 minutes) after a version is published before installing it. Blunts supply-chain
+# attacks that rely on a compromised version being installed within hours of publish.
+minimumReleaseAge: 7200
+minimumReleaseAgeExclude:
+  - "@entur/*"
