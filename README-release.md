@@ -237,16 +237,6 @@ Publishing a prebuilt tarball keeps trusted publishing and provenance intact, si
 upload. Nothing changes for repositories that pin internal dependencies to exact versions — they simply have no
 `workspace:` ranges to rewrite.
 
-## Publishing a scoped, private package
-
-```yml
-jobs:
-  release:
-    uses: entur/gha-npmjs/.github/workflows/release.yml@v1
-    with:
-      access: restricted
-```
-
 ## Publishing a prerelease dist-tag
 
 ```yml

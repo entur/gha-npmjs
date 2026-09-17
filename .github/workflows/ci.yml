@@ -23,12 +23,11 @@ jobs:
       dry_run: true
       package_manager: npm
 
-  test-release-dry-run-restricted:
+  test-release-dry-run-dist-tag:
     uses: ./.github/workflows/release.yml
     with:
       path: fixture/npm-package
       dry_run: true
-      access: restricted
       dist_tag: next
       provenance: false
 

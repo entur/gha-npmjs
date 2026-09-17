@@ -6,7 +6,7 @@ lockfile, so the workflow's frozen-lockfile install is exercised for real.
 
 | Fixture | Package manager | Covers |
 | --- | --- | --- |
-| [`npm-package`](npm-package) | npm | `npm ci`, the default single-package path, restricted access and dist-tag overrides |
+| [`npm-package`](npm-package) | npm | `npm ci`, the default single-package path, dist-tag and provenance overrides |
 | [`pnpm-package`](pnpm-package) | pnpm | `pnpm install --frozen-lockfile` |
 | [`yarn-package`](yarn-package) | yarn 4 (`node-modules` linker) | `yarn install --immutable` |
 | [`bun-package`](bun-package) | bun | `bun install --frozen-lockfile` |

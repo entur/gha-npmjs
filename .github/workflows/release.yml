@@ -43,10 +43,6 @@ on:
         description: "Override the build command. Default: run the package.json 'build' script if it exists, otherwise skip."
         type: string
         default: ""
-      access:
-        description: "npm access level for the published package. public|restricted. Default: public"
-        type: string
-        default: "public"
       dist_tag:
         description: "npm dist-tag to publish under. Default: latest"
         type: string
@@ -122,7 +118,6 @@ jobs:
       GHA_NPMJS_PACKAGE_MANAGER: ${{ inputs.package_manager }}
       GHA_NPMJS_INSTALL_COMMAND: ${{ inputs.install_command }}
       GHA_NPMJS_BUILD_COMMAND: ${{ inputs.build_command }}
-      GHA_NPMJS_ACCESS: ${{ inputs.access }}
       GHA_NPMJS_DIST_TAG: ${{ inputs.dist_tag }}
       GHA_NPMJS_PROVENANCE: ${{ inputs.provenance }}
       GHA_NPMJS_DRY_RUN: ${{ inputs.dry_run }}
@@ -154,16 +149,10 @@ jobs:
               ;;
           esac
 
-          case "$GHA_NPMJS_ACCESS" in
-            public|restricted)
-              ;; # OK
-            *)
-              echo "::error::access must be one of: public, restricted"
-              exit 1
-              ;;
-          esac
-
       - name: Verify mise configuration
+        # mise-action resolves the toolchain from mise_working_directory, so the configuration
+        # has to be looked for in the same directory the action will use, not in `path`
+        working-directory: ${{ inputs.mise_working_directory || inputs.path }}
         run: |
           # mise owns the toolchain: node and the package manager must be pinned in the repository
           [ -n "${{ runner.debug }}" ] && set -x
@@ -290,7 +279,7 @@ jobs:
           [ -n "${{ runner.debug }}" ] && set -x
           set -euo pipefail
 
-          publish_args=("--access" "$GHA_NPMJS_ACCESS" "--tag" "$GHA_NPMJS_DIST_TAG")
+          publish_args=("--access" "public" "--tag" "$GHA_NPMJS_DIST_TAG")
 
           # `npm stage publish` uploads the same tarball but holds it on npmjs until someone
           # approves it, which is where the 2FA proof-of-presence happens
@@ -364,7 +353,7 @@ jobs:
             echo "::group::Uploading $package_name@$package_version"
             if [ "$GHA_NPMJS_PACKAGE_MANAGER" = "npm" ]; then
               # npm has no workspace: protocol to resolve, so publish the directory directly
-              "${publish_command[@]}" --workspaces=false "${publish_args[@]}" "./$package_dir"
+              publish_target="./$package_dir"
             else
               # pnpm, yarn and bun rewrite `workspace:` ranges into real semver ranges when
               # they pack. The npm CLI does not understand the protocol and would publish it
@@ -399,8 +388,10 @@ jobs:
               fi
 
               echo "Uploading tarball $tarball packed by $GHA_NPMJS_PACKAGE_MANAGER"
-              "${publish_command[@]}" --workspaces=false "${publish_args[@]}" "$tarball"
+              publish_target="$tarball"
             fi
+
+            "${publish_command[@]}" --workspaces=false "${publish_args[@]}" "$publish_target"
             echo "::endgroup::"
 
             if [ "$GHA_NPMJS_DRY_RUN" = "true" ]; then
@@ -413,7 +404,7 @@ jobs:
 
           {
             echo ""
-            echo "$published $action_past, $skipped skipped. Dist-tag \`$GHA_NPMJS_DIST_TAG\`, access \`$GHA_NPMJS_ACCESS\`, provenance \`$GHA_NPMJS_PROVENANCE\`, dry run \`$GHA_NPMJS_DRY_RUN\`."
+            echo "$published $action_past, $skipped skipped. Dist-tag \`$GHA_NPMJS_DIST_TAG\`, provenance \`$GHA_NPMJS_PROVENANCE\`, dry run \`$GHA_NPMJS_DRY_RUN\`."
             if [ "$GHA_NPMJS_STAGE" = "true" ] && [ "$published" -gt 0 ] && [ "$GHA_NPMJS_DRY_RUN" != "true" ]; then
               echo ""
               echo "Nothing is live yet. Approve the staged versions on the **Staged Packages** tab on npmjs.com, or with \`npm stage approve <stage-id>\` (\`npm stage list\` shows the ids). Both require 2FA. \`npm stage reject <stage-id>\` discards them."
