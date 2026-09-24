@@ -16,7 +16,7 @@ jobs:
     needs: release
     if: needs.release.outputs.releases_created == 'false' && needs.release.outputs.prs_created == 'true'
     strategy:
-      max-parallel: 1 # Can't have them commit in parallel
+      max-parallel: 1 # One at a time, because each job commits to the same branch
       matrix:
         files:
           - workflow: .github/workflows/release.yml

@@ -1,6 +1,4 @@
-# Wait 5 days (7200 minutes) after a version is published before installing it. Blunts
-# supply-chain attacks that rely on a compromised version being installed within hours
-# of publish.
+# Only install package versions that are at least 5 days old (7200 minutes is 5 days). See fixture/README.md.
 minimumReleaseAge: 7200
 minimumReleaseAgeExclude:
   - "@entur/*"

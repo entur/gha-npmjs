@@ -51,10 +51,6 @@ on:
         description: "Publish with a provenance attestation (npm publish --provenance). Default: true"
         type: boolean
         default: true
-      stage:
-        description: "Stage the release on npmjs instead of publishing it straight away (npm stage publish). A staged version is held until someone approves it on npmjs.com or with `npm stage approve <stage-id>`, which is where the 2FA prompt happens. Requires npm >= 11.15.0, and the package must already exist on npmjs — new packages cannot be staged. Default: false"
-        type: boolean
-        default: false
       dry_run:
         description: "Run the publish step with --dry-run and skip the release-please job. Use to verify the setup from a pull request."
         type: boolean
@@ -104,7 +100,8 @@ jobs:
   publish:
     name: Publish to npmjs
     needs: release
-    # Publish on a real release, or on request as a dry run (the release job is skipped then)
+    # Runs after a real release, or in dry run. The release job is skipped in dry run,
+    # so `!cancelled()` is needed for this job to run.
     if: ${{ !cancelled() && (inputs.dry_run || needs.release.outputs.releases_created == 'true') }}
     runs-on: ubuntu-24.04
     timeout-minutes: ${{ inputs.timeout_minutes }}
@@ -126,23 +123,42 @@ jobs:
       GHA_NPMJS_MANIFEST_FILE: ${{ inputs.manifest_file }}
       GHA_NPMJS_RELEASE_TYPE: ${{ inputs.release_type }}
       GHA_NPMJS_SKIP_PUBLISHED: ${{ inputs.skip_published }}
-      GHA_NPMJS_STAGE: ${{ inputs.stage }}
+      GHA_NPMJS_RELEASE_PATH: ${{ inputs.path }}
     steps:
+      - name: Verify the release tag is known
+        if: ${{ !inputs.dry_run }}
+        # Runs from the workspace root, because the repository is not checked out yet.
+        working-directory: ${{ github.workspace }}
+        env:
+          GHA_NPMJS_TAG_NAME: ${{ needs.release.outputs.tag_name }}
+        run: |
+          # tag_name is empty when release-please has no tag for 'path'. actions/checkout would then
+          # check out the default branch, so stop here instead of publishing the wrong code.
+          [ -n "${{ runner.debug }}" ] && set -x
+          set -euo pipefail
+
+          if [ -z "$GHA_NPMJS_TAG_NAME" ]; then
+            echo "::error::release-please reported a release but no tag_name. With release_type=manifest this usually means 'path' ($GHA_NPMJS_RELEASE_PATH) is not one of the released paths. Refusing to publish, since checking out an empty ref would build the default branch instead of the release."
+            exit 1
+          fi
+
+          echo "Building release tag $GHA_NPMJS_TAG_NAME"
+
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # On a real release, build the released tag rather than the branch head
+          # In a real release, check out the release tag, not the head of the branch.
           ref: ${{ inputs.dry_run && github.ref || needs.release.outputs.tag_name }}
 
       - name: Validate inputs
         run: |
-          # Print every statement if debugging
+          # Print every command when debug logging is on.
           [ -n "${{ runner.debug }}" ] && set -x
           set -euo pipefail
 
           case "$GHA_NPMJS_PACKAGE_MANAGER" in
             npm|pnpm|yarn|bun)
-              ;; # OK
+              ;;
             *)
               echo "::error::package_manager must be one of: npm, pnpm, yarn, bun"
               exit 1
@@ -150,21 +166,38 @@ jobs:
           esac
 
       - name: Verify mise configuration
-        # mise-action resolves the toolchain from mise_working_directory, so the configuration
-        # has to be looked for in the same directory the action will use, not in `path`
+        # mise-action reads the configuration from mise_working_directory, so check the same directory.
         working-directory: ${{ inputs.mise_working_directory || inputs.path }}
         run: |
-          # mise owns the toolchain: node and the package manager must be pinned in the repository
+          # Node and the package manager must be pinned in a mise configuration in the repository.
           [ -n "${{ runner.debug }}" ] && set -x
           set -euo pipefail
 
+          # The files mise reads its configuration from, in the order mise checks them. Keep this
+          # list the same as mise's, or a valid repository fails this check.
           found=""
-          for candidate in mise.toml .mise.toml mise/config.toml .config/mise/config.toml .tool-versions; do
+          for candidate in \
+            mise.local.toml \
+            mise.toml .mise.toml \
+            mise/config.toml .mise/config.toml \
+            .config/mise.toml .config/mise/config.toml \
+            .tool-versions
+          do
             if [ -f "$candidate" ]; then
               found="$candidate"
               break
             fi
           done
+
+          # A conf.d directory splits the configuration into several .toml files.
+          if [ -z "$found" ]; then
+            for candidate in mise/conf.d .mise/conf.d .config/mise/conf.d; do
+              if compgen -G "$candidate/*.toml" > /dev/null; then
+                found="$candidate"
+                break
+              fi
+            done
+          fi
 
           if [ -z "$found" ]; then
             echo "::error::No mise configuration found in $(pwd). Add a mise.toml pinning node and your package manager, for example:"
@@ -175,7 +208,11 @@ jobs:
           fi
 
           echo "Using mise configuration: $found"
-          cat "$found"
+          if [ -d "$found" ]; then
+            cat "$found"/*.toml
+          else
+            cat "$found"
+          fi
 
       - name: Setup toolchain with mise
         uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
@@ -184,28 +221,6 @@ jobs:
           working_directory: ${{ inputs.mise_working_directory || inputs.path }}
           # Never reuse a cached toolchain for a release build
           cache: false
-
-      - name: Setup npm CLI
-        run: |
-          # Trusted publishing (OIDC) requires npm >= 11.5.1, staging requires npm >= 11.15.0
-          [ -n "${{ runner.debug }}" ] && set -x
-          set -euo pipefail
-
-          # Trusted publishing needs 11.5.1, `npm stage publish` needs 11.15.0
-          if [ "$GHA_NPMJS_STAGE" = "true" ]; then
-            required="11.15.0"
-          else
-            required="11.5.1"
-          fi
-          current="$(npm --version)"
-          echo "npm version from toolchain: $current"
-
-          lowest="$(printf '%s\n%s\n' "$required" "$current" | sort -V | head -n1)"
-          if [ "$current" != "$required" ] && [ "$lowest" = "$current" ]; then
-            echo "npm $current is older than $required, installing npm@$GHA_NPMJS_NPM_VERSION"
-            npm install -g "npm@$GHA_NPMJS_NPM_VERSION"
-            echo "npm version now: $(npm --version)"
-          fi
 
       - name: Install dependencies
         run: |
@@ -243,12 +258,82 @@ jobs:
           echo "Building: $build_command"
           eval "$build_command"
 
+      - name: Setup npm CLI
+        run: |
+          # Trusted publishing (OIDC) needs npm 11.5.1 or newer. This runs after install and build,
+          # so those use the npm version pinned in mise.
+          [ -n "${{ runner.debug }}" ] && set -x
+          set -euo pipefail
+
+          required="11.5.1"
+          current="$(npm --version)"
+          echo "npm version from toolchain: $current"
+
+          lowest="$(printf '%s\n%s\n' "$required" "$current" | sort -V | head -n1)"
+          if [ "$current" != "$required" ] && [ "$lowest" = "$current" ]; then
+            echo "npm $current is older than $required, installing npm@$GHA_NPMJS_NPM_VERSION"
+            npm install -g "npm@$GHA_NPMJS_NPM_VERSION"
+            echo "npm version now: $(npm --version)"
+          fi
+
       - name: Resolve packages to publish
         id: resolve-packages
         run: |
-          # A monorepo release bumps several packages at once, so the publish step works on a list
+          # Outputs the package directories to publish, in publish order.
           [ -n "${{ runner.debug }}" ] && set -x
           set -euo pipefail
+
+          # Publish dependencies before the packages that use them, so a failed release never
+          # leaves a package pointing at a version that is not on npmjs.
+          sort_topologically() {
+            local dirs="$1"
+            local names_json edges ordered tsort_stderr
+
+            # Maps each package name to its directory, for every package in this release.
+            names_json="$(
+              while IFS= read -r dir; do
+                [ -z "$dir" ] && continue
+                jq --arg dir "$dir" '{(.name): $dir}' "$dir/package.json"
+              done <<< "$dirs" | jq -s 'add // {}'
+            )"
+
+            # One line "<dependency directory> <dependent directory>" for each dependency that is
+            # also in this release.
+            edges="$(
+              while IFS= read -r dir; do
+                [ -z "$dir" ] && continue
+                jq -r --argjson names "$names_json" --arg dir "$dir" '
+                  [.dependencies, .devDependencies, .peerDependencies, .optionalDependencies]
+                  | map(select(. != null) | keys) | flatten | unique
+                  | map(select($names[.] != null and $names[.] != $dir) | "\($names[.]) \($dir)")
+                  | .[]' "$dir/package.json"
+              done <<< "$dirs"
+            )"
+
+            # No package depends on another, so keep the given order.
+            if [ -z "$edges" ]; then
+              echo "$dirs"
+              return 0
+            fi
+
+            # On a cycle, GNU tsort exits with 1 and BSD tsort only prints a warning. Fail on both.
+            tsort_stderr="$(mktemp)"
+            if ! ordered="$(tsort <<< "$edges" 2>"$tsort_stderr")" || [ -s "$tsort_stderr" ]; then
+              echo "::error::The packages being released depend on each other in a cycle, so there is no safe publish order."
+              cat "$tsort_stderr" >&2
+              echo "$edges" >&2
+              rm -f "$tsort_stderr"
+              return 1
+            fi
+            rm -f "$tsort_stderr"
+
+            # tsort only prints packages that have a dependency line. Add the others after them,
+            # in their original order.
+            {
+              echo "$ordered"
+              grep -vxF -f <(echo "$ordered") <<< "$dirs" || true
+            } | sed '/^[[:space:]]*$/d'
+          }
 
           if [ -n "$GHA_NPMJS_PACKAGES" ]; then
             package_dirs="$(echo "$GHA_NPMJS_PACKAGES" | sed '/^[[:space:]]*$/d')"
@@ -264,6 +349,18 @@ jobs:
             package_dirs="."
           fi
 
+          # Check that every package.json exists before reading the dependencies.
+          while IFS= read -r package_dir; do
+            [ -z "$package_dir" ] && continue
+            if [ ! -f "$package_dir/package.json" ]; then
+              echo "::error::No package.json in $package_dir"
+              exit 1
+            fi
+          done <<< "$package_dirs"
+
+          package_dirs="$(sort_topologically "$package_dirs")"
+
+          echo "Publish order (dependencies first):"
           echo "$package_dirs"
           {
             echo "package_dirs<<EOF"
@@ -275,23 +372,11 @@ jobs:
         env:
           GHA_NPMJS_PACKAGE_DIRS: ${{ steps.resolve-packages.outputs.package_dirs }}
         run: |
-          # Authentication is trusted publishing (OIDC), so no npm token is involved
+          # Uses trusted publishing (OIDC), so no npm token is needed.
           [ -n "${{ runner.debug }}" ] && set -x
           set -euo pipefail
 
           publish_args=("--access" "public" "--tag" "$GHA_NPMJS_DIST_TAG")
-
-          # `npm stage publish` uploads the same tarball but holds it on npmjs until someone
-          # approves it, which is where the 2FA proof-of-presence happens
-          if [ "$GHA_NPMJS_STAGE" = "true" ]; then
-            publish_command=(npm stage publish)
-            action_past="staged"
-            action_title="Stage"
-          else
-            publish_command=(npm publish)
-            action_past="published"
-            action_title="Publish"
-          fi
 
           if [ "$GHA_NPMJS_PROVENANCE" = "true" ]; then
             publish_args+=("--provenance")
@@ -299,11 +384,11 @@ jobs:
 
           if [ "$GHA_NPMJS_DRY_RUN" = "true" ]; then
             publish_args+=("--dry-run")
-            echo "::notice::Dry run, nothing is $action_past on npmjs"
+            echo "::notice::Dry run, nothing is published on npmjs"
           fi
 
           {
-            echo "### npmjs $action_title"
+            echo "### npmjs Publish"
             echo ""
             echo "| Package | Version | Result |"
             echo "| --- | --- | --- |"
@@ -331,8 +416,8 @@ jobs:
               continue
             fi
 
-            # Only some packages are bumped per monorepo release, so republishing an
-            # existing version is expected and must not fail the release
+            # A monorepo release bumps only some packages, so the others are already on npmjs.
+            # Skip them instead of failing.
             if [ "$GHA_NPMJS_SKIP_PUBLISHED" = "true" ] && npm view "$package_name@$package_version" version > /dev/null 2>&1; then
               echo "Skipping $package_name@$package_version: already published"
               echo "| $package_name | $package_version | skipped (already published) |" >> "$GITHUB_STEP_SUMMARY"
@@ -340,25 +425,14 @@ jobs:
               continue
             fi
 
-            # A staged version is not on the registry yet, so `npm view` cannot see it. Without
-            # this check a re-run would stage the same version twice.
-            if [ "$GHA_NPMJS_STAGE" = "true" ] && [ "$GHA_NPMJS_SKIP_PUBLISHED" = "true" ] && [ "$GHA_NPMJS_DRY_RUN" != "true" ] \
-              && npm stage list "$package_name@$package_version" 2>/dev/null | grep -q "$package_version"; then
-              echo "Skipping $package_name@$package_version: already staged and waiting for approval"
-              echo "| $package_name | $package_version | skipped (already staged) |" >> "$GITHUB_STEP_SUMMARY"
-              skipped=$((skipped + 1))
-              continue
-            fi
-
             echo "::group::Uploading $package_name@$package_version"
             if [ "$GHA_NPMJS_PACKAGE_MANAGER" = "npm" ]; then
-              # npm has no workspace: protocol to resolve, so publish the directory directly
+              # npm does not use the workspace: protocol, so publish the directory directly.
               publish_target="./$package_dir"
             else
-              # pnpm, yarn and bun rewrite `workspace:` ranges into real semver ranges when
-              # they pack. The npm CLI does not understand the protocol and would publish it
-              # verbatim, breaking every consumer, so let the package manager build the
-              # tarball and hand the finished artifact to npm for the OIDC publish.
+              # The npm CLI would publish `workspace:` ranges as-is, which breaks installs for users
+              # of the package. pnpm, yarn and bun replace them with real versions when they pack,
+              # so pack with the package manager and publish the tarball with npm (OIDC).
               rm -rf "$tarball_dir"
               mkdir -p "$tarball_dir"
 
@@ -374,8 +448,7 @@ jobs:
                 exit 1
               fi
 
-              # A `workspace:` range that survived packing would be published verbatim and
-              # break every consumer install, so refuse to upload the tarball
+              # Stop if the packed package.json still has a `workspace:` range.
               packed_workspace_ranges="$(tar -xzOf "$tarball" package/package.json \
                 | jq -r '[.dependencies, .devDependencies, .peerDependencies, .optionalDependencies]
                          | map(select(. != null) | to_entries) | flatten
@@ -391,22 +464,18 @@ jobs:
               publish_target="$tarball"
             fi
 
-            "${publish_command[@]}" --workspaces=false "${publish_args[@]}" "$publish_target"
+            npm publish --workspaces=false "${publish_args[@]}" "$publish_target"
             echo "::endgroup::"
 
             if [ "$GHA_NPMJS_DRY_RUN" = "true" ]; then
               echo "| $package_name | $package_version | dry run |" >> "$GITHUB_STEP_SUMMARY"
             else
-              echo "| $package_name | $package_version | $action_past |" >> "$GITHUB_STEP_SUMMARY"
+              echo "| $package_name | $package_version | published |" >> "$GITHUB_STEP_SUMMARY"
             fi
             published=$((published + 1))
           done <<< "$GHA_NPMJS_PACKAGE_DIRS"
 
           {
             echo ""
-            echo "$published $action_past, $skipped skipped. Dist-tag \`$GHA_NPMJS_DIST_TAG\`, provenance \`$GHA_NPMJS_PROVENANCE\`, dry run \`$GHA_NPMJS_DRY_RUN\`."
-            if [ "$GHA_NPMJS_STAGE" = "true" ] && [ "$published" -gt 0 ] && [ "$GHA_NPMJS_DRY_RUN" != "true" ]; then
-              echo ""
-              echo "Nothing is live yet. Approve the staged versions on the **Staged Packages** tab on npmjs.com, or with \`npm stage approve <stage-id>\` (\`npm stage list\` shows the ids). Both require 2FA. \`npm stage reject <stage-id>\` discards them."
-            fi
+            echo "$published published, $skipped skipped. Dist-tag \`$GHA_NPMJS_DIST_TAG\`, provenance \`$GHA_NPMJS_PROVENANCE\`, dry run \`$GHA_NPMJS_DRY_RUN\`."
           } >> "$GITHUB_STEP_SUMMARY"
