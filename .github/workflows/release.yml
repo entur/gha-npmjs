@@ -64,9 +64,10 @@ on:
         type: string
         default: ""
       npm_version:
-        description: "npm CLI version to use for publishing. Trusted publishing requires >= 11.5.1, which is installed automatically when the toolchain ships an older npm."
+        description: "npm CLI version installed for publishing, after install and build. Trusted publishing requires >= 11.5.1. Default: 12.1.0"
         type: string
-        default: "latest"
+        # Pinned, so a new npm release can't change how packages are published. Bump by hand, Dependabot can't update this.
+        default: "12.1.0"
       timeout_minutes:
         description: "Timeout in minutes for the publish job"
         type: number
@@ -110,6 +111,7 @@ jobs:
       id-token: write # Required for npm trusted publishing (OIDC) and provenance
     defaults:
       run:
+        shell: bash --noprofile --norc -euo pipefail {0}
         working-directory: ${{ inputs.path }}
     env:
       GHA_NPMJS_PACKAGE_MANAGER: ${{ inputs.package_manager }}
@@ -134,9 +136,6 @@ jobs:
         run: |
           # tag_name is empty when release-please has no tag for 'path'. actions/checkout would then
           # check out the default branch, so stop here instead of publishing the wrong code.
-          [ -n "${{ runner.debug }}" ] && set -x
-          set -euo pipefail
-
           if [ -z "$GHA_NPMJS_TAG_NAME" ]; then
             echo "::error::release-please reported a release but no tag_name. With release_type=manifest this usually means 'path' ($GHA_NPMJS_RELEASE_PATH) is not one of the released paths. Refusing to publish, since checking out an empty ref would build the default branch instead of the release."
             exit 1
@@ -150,70 +149,6 @@ jobs:
           # In a real release, check out the release tag, not the head of the branch.
           ref: ${{ inputs.dry_run && github.ref || needs.release.outputs.tag_name }}
 
-      - name: Validate inputs
-        run: |
-          # Print every command when debug logging is on.
-          [ -n "${{ runner.debug }}" ] && set -x
-          set -euo pipefail
-
-          case "$GHA_NPMJS_PACKAGE_MANAGER" in
-            npm|pnpm|yarn|bun)
-              ;;
-            *)
-              echo "::error::package_manager must be one of: npm, pnpm, yarn, bun"
-              exit 1
-              ;;
-          esac
-
-      - name: Verify mise configuration
-        # mise-action reads the configuration from mise_working_directory, so check the same directory.
-        working-directory: ${{ inputs.mise_working_directory || inputs.path }}
-        run: |
-          # Node and the package manager must be pinned in a mise configuration in the repository.
-          [ -n "${{ runner.debug }}" ] && set -x
-          set -euo pipefail
-
-          # The files mise reads its configuration from, in the order mise checks them. Keep this
-          # list the same as mise's, or a valid repository fails this check.
-          found=""
-          for candidate in \
-            mise.local.toml \
-            mise.toml .mise.toml \
-            mise/config.toml .mise/config.toml \
-            .config/mise.toml .config/mise/config.toml \
-            .tool-versions
-          do
-            if [ -f "$candidate" ]; then
-              found="$candidate"
-              break
-            fi
-          done
-
-          # A conf.d directory splits the configuration into several .toml files.
-          if [ -z "$found" ]; then
-            for candidate in mise/conf.d .mise/conf.d .config/mise/conf.d; do
-              if compgen -G "$candidate/*.toml" > /dev/null; then
-                found="$candidate"
-                break
-              fi
-            done
-          fi
-
-          if [ -z "$found" ]; then
-            echo "::error::No mise configuration found in $(pwd). Add a mise.toml pinning node and your package manager, for example:"
-            echo "[tools]"
-            echo "node = \"24.21.0\""
-            echo "pnpm = \"12.4.2\""
-            exit 1
-          fi
-
-          echo "Using mise configuration: $found"
-          if [ -d "$found" ]; then
-            cat "$found"/*.toml
-          else
-            cat "$found"
-          fi
-
       - name: Setup toolchain with mise
         uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
@@ -222,30 +157,38 @@ jobs:
           # Never reuse a cached toolchain for a release build
           cache: false
 
+      - name: Verify node is pinned in mise
+        working-directory: ${{ inputs.mise_working_directory || inputs.path }}
+        run: |
+          # Uses mise's own config lookup, so parent directories and every file name mise supports count.
+          if ! mise which node > /dev/null; then
+            echo "::error::node is not pinned in a mise configuration for $(pwd). Add a mise.toml pinning node and your package manager, for example:"
+            echo "[tools]"
+            echo "node = \"24.21.0\""
+            echo "pnpm = \"12.4.2\""
+            exit 1
+          fi
+          mise ls --current
+
       - name: Install dependencies
         run: |
-          [ -n "${{ runner.debug }}" ] && set -x
-          set -euo pipefail
-
-          if [ -n "$GHA_NPMJS_INSTALL_COMMAND" ]; then
-            install_command="$GHA_NPMJS_INSTALL_COMMAND"
-          else
-            case "$GHA_NPMJS_PACKAGE_MANAGER" in
-              npm)  install_command="npm ci" ;;
-              pnpm) install_command="pnpm install --frozen-lockfile" ;;
-              yarn) install_command="yarn install --immutable" ;;
-              bun)  install_command="bun install --frozen-lockfile" ;;
-            esac
-          fi
+          case "$GHA_NPMJS_PACKAGE_MANAGER" in
+            npm)  default_install="npm ci" ;;
+            pnpm) default_install="pnpm install --frozen-lockfile" ;;
+            yarn) default_install="yarn install --immutable" ;;
+            bun)  default_install="bun install --frozen-lockfile" ;;
+            *)
+              echo "::error::package_manager must be one of: npm, pnpm, yarn, bun"
+              exit 1
+              ;;
+          esac
+          install_command="${GHA_NPMJS_INSTALL_COMMAND:-$default_install}"
 
           echo "Installing dependencies: $install_command"
           eval "$install_command"
 
       - name: Build
         run: |
-          [ -n "${{ runner.debug }}" ] && set -x
-          set -euo pipefail
-
           if [ -n "$GHA_NPMJS_BUILD_COMMAND" ]; then
             build_command="$GHA_NPMJS_BUILD_COMMAND"
           elif jq -e '.scripts.build' package.json > /dev/null; then
@@ -259,29 +202,16 @@ jobs:
           eval "$build_command"
 
       - name: Setup npm CLI
+        # Trusted publishing (OIDC) needs npm 11.5.1 or newer. This runs after install and build,
+        # so those use the npm version pinned in mise.
         run: |
-          # Trusted publishing (OIDC) needs npm 11.5.1 or newer. This runs after install and build,
-          # so those use the npm version pinned in mise.
-          [ -n "${{ runner.debug }}" ] && set -x
-          set -euo pipefail
-
-          required="11.5.1"
-          current="$(npm --version)"
-          echo "npm version from toolchain: $current"
-
-          lowest="$(printf '%s\n%s\n' "$required" "$current" | sort -V | head -n1)"
-          if [ "$current" != "$required" ] && [ "$lowest" = "$current" ]; then
-            echo "npm $current is older than $required, installing npm@$GHA_NPMJS_NPM_VERSION"
-            npm install -g "npm@$GHA_NPMJS_NPM_VERSION"
-            echo "npm version now: $(npm --version)"
-          fi
+          npm install -g "npm@$GHA_NPMJS_NPM_VERSION"
+          echo "npm version: $(npm --version)"
 
       - name: Resolve packages to publish
         id: resolve-packages
         run: |
           # Outputs the package directories to publish, in publish order.
-          [ -n "${{ runner.debug }}" ] && set -x
-          set -euo pipefail
 
           # Publish dependencies before the packages that use them, so a failed release never
           # leaves a package pointing at a version that is not on npmjs.
@@ -298,12 +228,13 @@ jobs:
             )"
 
             # One line "<dependency directory> <dependent directory>" for each dependency that is
-            # also in this release.
+            # also in this release. devDependencies are left out: consumers never install them, so
+            # they do not affect the publish order and would only report false cycles.
             edges="$(
               while IFS= read -r dir; do
                 [ -z "$dir" ] && continue
                 jq -r --argjson names "$names_json" --arg dir "$dir" '
-                  [.dependencies, .devDependencies, .peerDependencies, .optionalDependencies]
+                  [.dependencies, .peerDependencies, .optionalDependencies]
                   | map(select(. != null) | keys) | flatten | unique
                   | map(select($names[.] != null and $names[.] != $dir) | "\($names[.]) \($dir)")
                   | .[]' "$dir/package.json"
@@ -373,8 +304,6 @@ jobs:
           GHA_NPMJS_PACKAGE_DIRS: ${{ steps.resolve-packages.outputs.package_dirs }}
         run: |
           # Uses trusted publishing (OIDC), so no npm token is needed.
-          [ -n "${{ runner.debug }}" ] && set -x
-          set -euo pipefail
 
           publish_args=("--access" "public" "--tag" "$GHA_NPMJS_DIST_TAG")
 
@@ -400,11 +329,6 @@ jobs:
 
           while IFS= read -r package_dir; do
             [ -z "$package_dir" ] && continue
-
-            if [ ! -f "$package_dir/package.json" ]; then
-              echo "::error::No package.json in $package_dir"
-              exit 1
-            fi
 
             package_name="$(jq -r .name "$package_dir/package.json")"
             package_version="$(jq -r .version "$package_dir/package.json")"

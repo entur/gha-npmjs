@@ -39,6 +39,17 @@ jobs:
       dist_tag: next
       provenance: false
 
+  # Overrides of the install, build and mise inputs, and publishing without the already-published check.
+  test-release-dry-run-overrides:
+    uses: ./.github/workflows/release.yml
+    with:
+      path: fixture/npm-package
+      dry_run: true
+      install_command: npm ci --ignore-scripts
+      build_command: npm run build
+      mise_working_directory: fixture/npm-package
+      skip_published: false
+
   # Monorepo in manifest mode. Publishes every package listed in .release-please-manifest.json.
   test-release-dry-run-monorepo-npm:
     uses: ./.github/workflows/release.yml

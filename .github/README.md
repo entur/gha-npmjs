@@ -13,8 +13,8 @@ released version to npmjs using [trusted publishing](https://docs.npmjs.com/trus
 ## Requirements
 
 1. **mise** — the toolchain is resolved with [mise](https://mise.jdx.dev). Your repository must contain a mise
-   configuration (`mise.toml`, `.mise.toml`, `.config/mise/config.toml` or `.tool-versions`) pinning node and your
-   package manager. The workflow fails early if it finds none.
+   configuration pinning node and your package manager. Any file name mise supports counts, including one in a parent
+   directory of `path`. The workflow fails after the toolchain setup if node is not pinned.
 
    ```toml
    # mise.toml
@@ -82,8 +82,12 @@ name: CI
 on:
   pull_request:
 
+# release.yml needs these permissions to start, even in dry run. Without them the run fails with
+# `startup_failure`. See README-release.md, "Dry run from a pull request".
 permissions:
-  contents: read
+  contents: write
+  issues: write
+  pull-requests: write
   id-token: write
 
 jobs:
@@ -122,8 +126,8 @@ and [`fixture/monorepo-npm`](../fixture/monorepo-npm) for a working layout model
 [`entur/entur-partner-packages`](https://github.com/entur/entur-partner-packages).
 
 Dependencies and the build run with your package manager; the publish itself always runs through the npm CLI, because
-trusted publishing is an npm CLI feature. The workflow upgrades npm automatically when the toolchain ships a version
-older than 11.5.1.
+trusted publishing is an npm CLI feature. The workflow installs a pinned npm version (override with `npm_version`) before
+publishing, since trusted publishing needs npm 11.5.1 or newer.
 
 ### Setting up the trusted publisher
 

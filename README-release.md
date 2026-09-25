@@ -116,8 +116,17 @@ is already on npmjs are skipped, so a release that bumps two of seven packages p
 `skip_published: false` to fail instead. Packages marked `"private": true` are always skipped.
 
 > [!NOTE]
-> release-please reads `release-please-config.json` and `.release-please-manifest.json` from the repository root, so
-> keep `path` at its default `.` in manifest mode.
+> release-please reads `release-please-config.json` and `.release-please-manifest.json` from the repository root.
+> The publish step reads the manifest from `path`, so with `path` left at `.` both agree. To publish a single package
+> in a subdirectory with manifest mode, set `path` to that package and `packages: "."`, so the manifest is not read
+> from `path`:
+>
+> ```yml
+> with:
+>   path: packages/placeholder
+>   release_type: manifest
+>   packages: "."
+> ```
 
 Repository layout:
 
@@ -247,10 +256,9 @@ jobs:
 
 ## mise configuration
 
-The workflow looks for `mise.local.toml`, `mise.toml`, `.mise.toml`, `mise/config.toml`, `.mise/config.toml`,
-`.config/mise.toml`, `.config/mise/config.toml`, `.tool-versions`, or a `conf.d` directory holding `.toml` files
-(`mise/conf.d`, `.mise/conf.d`, `.config/mise/conf.d`) — every location mise itself resolves from. It searches
-`mise_working_directory`, falling back to `path`, and fails with an error if none is found.
+After mise-action installs the toolchain, the workflow runs `mise which node` from `mise_working_directory`, falling
+back to `path`. It fails with an error if node is not pinned. mise's own lookup is used, so any file name mise supports
+counts, including a config in a parent directory (for example the repository root when `path` is a subfolder).
 
 ```toml
 # mise.toml
@@ -259,5 +267,5 @@ node = "24.21.0"
 pnpm = "12.4.2"
 ```
 
-Trusted publishing requires npm >= 11.5.1. If the toolchain resolves an older npm, the workflow installs
-`npm@${{ inputs.npm_version }}` (default `latest`) before publishing.
+Trusted publishing requires npm >= 11.5.1. After install and build, the workflow always installs
+`npm@${{ inputs.npm_version }}` (default `12.1.0`) for publishing.

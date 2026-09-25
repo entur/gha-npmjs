@@ -1,4 +1,4 @@
-name: create release
+name: Entur/Npmjs/CD
 on:
   push:
     branches:
