@@ -1,0 +1,13 @@
+{
+  "name": "@entur/gha-npmjs-fixture",
+  "version": "0.0.0",
+  "description": "Fixture package used to test the reusable workflows in this repository. Never published.",
+  "license": "EUPL-1.2",
+  "main": "index.js",
+  "files": [
+    "index.js"
+  ],
+  "scripts": {
+    "build": "node -e \"console.log('fixture build ok')\""
+  }
+}

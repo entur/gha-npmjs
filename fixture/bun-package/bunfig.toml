@@ -1,0 +1,3 @@
+[install]
+# Only install package versions that are at least 5 days old (432000 seconds is 5 days). See fixture/README.md.
+minimumReleaseAge = 432000

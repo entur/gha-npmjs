@@ -1,0 +1,118 @@
+name: Entur/Npmjs/CI
+
+on:
+  pull_request:
+    # `edited` is not a default type. It is needed so that changing the PR title runs
+    # verify-pr again with the new title.
+    types: [opened, synchronize, reopened, edited]
+  workflow_dispatch:
+
+# The jobs below call release.yml, which references entur/gha-meta's release workflow.
+# That workflow needs these write permissions. GitHub checks them when the run starts,
+# so without them the run fails to start, even in dry run.
+permissions:
+  contents: write # entur/gha-meta release-please, via release.yml
+  issues: write # entur/gha-meta release-please, via release.yml
+  pull-requests: write # entur/gha-meta release-please and verify-pr
+  id-token: write # Required by the publish job in release.yml
+
+jobs:
+  verify-pr:
+    name: Verify PR
+    if: ${{ github.event_name == 'pull_request' }}
+    uses: entur/gha-meta/.github/workflows/verify-pr.yml@c14eef7f4d90ed1be2c1df4dfb0927322bcbb3ba # v1.9.0
+
+  # Dry run of the npm fixture package. It installs, builds and runs `npm publish --dry-run`,
+  # so nothing is published.
+  test-release-dry-run-npm:
+    uses: ./.github/workflows/release.yml
+    with:
+      path: fixture/npm-package
+      dry_run: true
+      package_manager: npm
+
+  test-release-dry-run-dist-tag:
+    uses: ./.github/workflows/release.yml
+    with:
+      path: fixture/npm-package
+      dry_run: true
+      dist_tag: next
+      provenance: true
+
+  # Overrides of the install, build and mise inputs, and publishing without the already-published check.
+  test-release-dry-run-overrides:
+    uses: ./.github/workflows/release.yml
+    with:
+      path: fixture/npm-package
+      dry_run: true
+      install_command: npm ci --ignore-scripts
+      build_command: npm run build
+      mise_working_directory: fixture/npm-package
+      skip_published: false
+
+  # Monorepo in manifest mode. Publishes every package listed in .release-please-manifest.json.
+  test-release-dry-run-monorepo-npm:
+    uses: ./.github/workflows/release.yml
+    with:
+      path: fixture/monorepo-npm
+      release_type: manifest
+      dry_run: true
+
+  # Same monorepo, with a package list instead of the manifest. common depends on util but is
+  # listed first, to test the publish order. The step summary must show util before common.
+  test-release-dry-run-monorepo-npm-explicit-packages:
+    uses: ./.github/workflows/release.yml
+    with:
+      path: fixture/monorepo-npm
+      dry_run: true
+      packages: |
+        packages/common
+        packages/util
+
+  # One dry run for each of the other package managers.
+  test-release-dry-run-pnpm:
+    uses: ./.github/workflows/release.yml
+    with:
+      path: fixture/pnpm-package
+      package_manager: pnpm
+      dry_run: true
+
+  test-release-dry-run-yarn:
+    uses: ./.github/workflows/release.yml
+    with:
+      path: fixture/yarn-package
+      package_manager: yarn
+      dry_run: true
+
+  test-release-dry-run-bun:
+    uses: ./.github/workflows/release.yml
+    with:
+      path: fixture/bun-package
+      package_manager: bun
+      dry_run: true
+
+  # Monorepos that use the workspace: protocol. Tests that `workspace:` ranges are replaced
+  # with real versions before npm publishes the packages.
+  test-release-dry-run-monorepo-pnpm:
+    uses: ./.github/workflows/release.yml
+    with:
+      path: fixture/monorepo-pnpm
+      package_manager: pnpm
+      release_type: manifest
+      dry_run: true
+
+  test-release-dry-run-monorepo-yarn:
+    uses: ./.github/workflows/release.yml
+    with:
+      path: fixture/monorepo-yarn
+      package_manager: yarn
+      release_type: manifest
+      dry_run: true
+
+  test-release-dry-run-monorepo-bun:
+    uses: ./.github/workflows/release.yml
+    with:
+      path: fixture/monorepo-bun
+      package_manager: bun
+      release_type: manifest
+      dry_run: true
