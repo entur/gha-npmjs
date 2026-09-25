@@ -1,15 +1,263 @@
 # `gha-npmjs/release`
 
-Create a release with [release-please](https://github.com/googleapis/release-please) and publish the released version
-to [npmjs.com](https://www.npmjs.com) with [trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC) — no
-npm token required.
+Release your npm package with [release-please](https://github.com/googleapis/release-please) and publish it to
+[npmjs.com](https://www.npmjs.com) with [trusted publishing](https://docs.npmjs.com/trusted-publishers). No npm token
+needed.
 
-The toolchain (node and your package manager) is resolved with [mise](https://mise.jdx.dev), so your repository must
-pin its tools in a mise configuration file.
+## Contents
 
-> [!TIP]
-> Set `dry_run: true` to install, build and run `npm publish --dry-run` without touching npmjs. The release-please job
-> is skipped, so release configuration is not exercised. Use it from a pull request to verify the setup before merging.
+- [How it works](#how-it-works)
+- [Setup](#setup)
+  - [Step 1: Pin your toolchain with mise](#step-1-pin-your-toolchain-with-mise)
+  - [Step 2: Add the release workflow](#step-2-add-the-release-workflow)
+  - [Step 3: Configure the trusted publisher on npmjs](#step-3-configure-the-trusted-publisher-on-npmjs)
+  - [Step 4: Test it from a pull request (optional)](#step-4-test-it-from-a-pull-request-optional)
+  - [Step 5: Release](#step-5-release)
+- [Examples](#examples)
+  - [Package in a subdirectory](#package-in-a-subdirectory)
+  - [pnpm, yarn or bun](#pnpm-yarn-or-bun)
+  - [Monorepo](#monorepo)
+  - [Prerelease dist-tag](#prerelease-dist-tag)
+  - [Provenance](#provenance)
+  - [Custom install or build command](#custom-install-or-build-command)
+- [Inputs](#inputs)
+- [Outputs](#outputs)
+- [Good to know](#good-to-know)
+- [Troubleshooting](#troubleshooting)
+
+## How it works
+
+1. You push to `main`. release-please opens or updates a release pull request, with the version bump taken from your
+   [conventional commits](https://www.conventionalcommits.org).
+2. You merge the release pull request. release-please creates the tag and the GitHub release.
+3. The workflow checks out the tag, installs and builds with your package manager, and publishes to npmjs.
+
+## Setup
+
+### Step 1: Pin your toolchain with mise
+
+The workflow installs node and your package manager with [mise](https://mise.jdx.dev). Add a `mise.toml` to your
+repository:
+
+```toml
+[tools]
+node = "24.21.0"
+pnpm = "12.4.2" # leave out if you use npm
+```
+
+Commit your lockfile too. Dependencies are installed with a frozen lockfile.
+
+> [!IMPORTANT]
+> Dependabot does not update `mise.toml`. Bump the node and package manager versions by hand.
+
+### Step 2: Add the release workflow
+
+Create `.github/workflows/cd.yml`:
+
+```yml
+name: CD
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write # trusted publishing (OIDC)
+
+jobs:
+  release:
+    uses: entur/gha-npmjs/.github/workflows/release.yml@v1
+```
+
+All four permissions are required.
+
+### Step 3: Configure the trusted publisher on npmjs
+
+On npmjs.com, open your package → **Settings** → **Trusted publisher** → **GitHub Actions**:
+
+| Field | Value |
+| --- | --- |
+| Organization or user | `entur` |
+| Repository | your repository name |
+| Workflow filename | `cd.yml` (the file from step 2) |
+| Environment | leave empty |
+
+> [!NOTE]
+> A brand new package must be published once by hand before you can configure a trusted publisher.
+
+### Step 4: Test it from a pull request (optional)
+
+A dry run installs, builds and runs `npm publish --dry-run`. Nothing is released or published. Create
+`.github/workflows/ci.yml`:
+
+```yml
+name: CI
+
+on:
+  pull_request:
+
+permissions: # same as cd.yml, or the run fails to start
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+
+jobs:
+  publish-dry-run:
+    uses: entur/gha-npmjs/.github/workflows/release.yml@v1
+    with:
+      dry_run: true
+```
+
+### Step 5: Release
+
+Merge to `main`, then merge the release pull request that release-please opens. The new version is on npmjs a few
+minutes later.
+
+## Examples
+
+Each example only shows the `jobs` part of `cd.yml`. Keep the `on` and `permissions` from
+[step 2](#step-2-add-the-release-workflow).
+
+### Package in a subdirectory
+
+```yml
+jobs:
+  release:
+    uses: entur/gha-npmjs/.github/workflows/release.yml@v1
+    with:
+      path: packages/amazing-lib
+```
+
+### pnpm, yarn or bun
+
+```yml
+jobs:
+  release:
+    uses: entur/gha-npmjs/.github/workflows/release.yml@v1
+    with:
+      package_manager: pnpm
+```
+
+| `package_manager` | Install command | Example |
+| --- | --- | --- |
+| `npm` (default) | `npm ci` | [`fixture/npm-package`](fixture/npm-package) |
+| `pnpm` | `pnpm install --frozen-lockfile` | [`fixture/pnpm-package`](fixture/pnpm-package) |
+| `yarn` | `yarn install --immutable` | [`fixture/yarn-package`](fixture/yarn-package) |
+| `bun` | `bun install --frozen-lockfile` | [`fixture/bun-package`](fixture/bun-package) |
+
+Pin the same package manager in `mise.toml`.
+
+### Monorepo
+
+Use release-please [manifest mode](https://github.com/googleapis/release-please/blob/main/docs/manifest-releaser.md).
+Each package gets its own version, tag and changelog.
+
+```yml
+jobs:
+  release:
+    uses: entur/gha-npmjs/.github/workflows/release.yml@v1
+    with:
+      release_type: manifest
+      package_manager: yarn
+```
+
+Add these two files at the repository root:
+
+```sh
+.
+├── mise.toml
+├── package.json
+├── release-please-config.json
+├── .release-please-manifest.json
+└── packages
+    ├── common
+    │   └── package.json
+    └── util
+        └── package.json
+```
+
+`release-please-config.json`:
+
+```json
+{
+  "release-type": "node",
+  "tag-separator": "@",
+  "include-v-in-tag": false,
+  "packages": {
+    "packages/common": { "package-name": "@entur/common", "component": "@entur/common" },
+    "packages/util": { "package-name": "@entur/util", "component": "@entur/util" }
+  },
+  "plugins": ["node-workspace"]
+}
+```
+
+`.release-please-manifest.json`:
+
+```json
+{
+  "packages/common": "1.0.0",
+  "packages/util": "1.0.0"
+}
+```
+
+What gets published:
+
+- Every package in `.release-please-manifest.json` whose version is not on npmjs yet.
+- Packages already on npmjs are skipped. Set `skip_published: false` to fail instead.
+- Packages with `"private": true` are always skipped.
+
+To publish a fixed list instead of the whole manifest, add `packages`:
+
+```yml
+    with:
+      release_type: manifest
+      packages: |
+        packages/util
+        packages/common
+```
+
+To release one package in a subdirectory with manifest mode, set `path` to the package and `packages: "."`:
+
+```yml
+    with:
+      path: packages/amazing-lib
+      release_type: manifest
+      packages: "."
+```
+
+Working examples: [`fixture/monorepo-npm`](fixture/monorepo-npm), [`fixture/monorepo-pnpm`](fixture/monorepo-pnpm),
+[`fixture/monorepo-yarn`](fixture/monorepo-yarn) and [`fixture/monorepo-bun`](fixture/monorepo-bun).
+
+### Prerelease dist-tag
+
+```yml
+    with:
+      dist_tag: next
+```
+
+### Provenance
+
+Provenance is off by default, because it only works from a public repository. To turn it on:
+
+```yml
+    with:
+      provenance: true
+```
+
+### Custom install or build command
+
+```yml
+    with:
+      install_command: npm ci --ignore-scripts
+      build_command: npm run build:prod
+```
+
+Without `build_command`, the `build` script in `package.json` runs if it exists. Otherwise the build is skipped.
 
 ## Inputs
 
@@ -27,245 +275,27 @@ Generated by `tj-actions/auto-doc` in the CD workflow.
 
 <!-- AUTO-DOC-OUTPUT:END -->
 
-# Usage
+## Good to know
 
-Add the following to your deployment workflow. The calling workflow must grant the permissions below, since a called
-workflow can never hold more permissions than its caller.
+- **Publishing always uses the npm CLI.** Trusted publishing is an npm CLI feature. After install and build, the
+  workflow installs npm `npm_version` (default `12.1.0`) for the publish step.
+- **`workspace:` ranges are replaced before publishing.** With pnpm, yarn or bun, each package is packed by your
+  package manager, which turns `workspace:*` into the real version. The workflow fails if a `workspace:` range is left.
+- **`prepublishOnly` does not run with pnpm, yarn or bun.** npm skips it when publishing a tarball. Move build or test
+  steps to `build` or `prepack`.
+- **Dependencies are published first.** In a monorepo, a package is never published before a package it depends on.
+- **mise config can be in a parent directory.** Any file name mise supports works. Use `mise_working_directory` if it
+  lives somewhere else.
 
-```yml
-# cd.yml
-name: CD
+## Troubleshooting
 
-on:
-  push:
-    branches:
-      - main
-
-permissions:
-  contents: write
-  pull-requests: write
-  issues: write
-  id-token: write # Required for trusted publishing (OIDC) and provenance
-
-jobs:
-  release:
-    uses: entur/gha-npmjs/.github/workflows/release.yml@v1
-```
-
-## Publishing a package in a subdirectory
-
-```yml
-jobs:
-  release:
-    uses: entur/gha-npmjs/.github/workflows/release.yml@v1
-    with:
-      path: packages/amazing-lib
-```
-
-## Using another package manager
-
-`package_manager` selects the tool used to install dependencies and build. The publish step always uses the npm CLI,
-because trusted publishing is an npm CLI feature.
-
-```yml
-jobs:
-  release:
-    uses: entur/gha-npmjs/.github/workflows/release.yml@v1
-    with:
-      package_manager: pnpm
-```
-
-Defaults per package manager, each covered by a fixture in [`fixture/`](fixture):
-
-| package_manager | install command | fixture |
-| --- | --- | --- |
-| `npm` | `npm ci` | [`fixture/npm-package`](fixture/npm-package) |
-| `pnpm` | `pnpm install --frozen-lockfile` | [`fixture/pnpm-package`](fixture/pnpm-package) |
-| `yarn` | `yarn install --immutable` | [`fixture/yarn-package`](fixture/yarn-package) |
-| `bun` | `bun install --frozen-lockfile` | [`fixture/bun-package`](fixture/bun-package) |
-
-Pin the package manager in `mise.toml` alongside node — the workflow installs exactly what you pin:
-
-```toml
-[tools]
-node = "24.21.0"
-pnpm = "12.4.2"
-```
-
-Override with `install_command` and `build_command` when the defaults don't fit. Without `build_command`, the
-`build` script from `package.json` runs if it exists, otherwise the build is skipped.
-
-## Monorepos (release-please manifest mode)
-
-For a workspaces monorepo — yarn/npm/pnpm workspaces, typically with `lerna` for linking and running tasks — run
-release-please in [manifest mode](https://github.com/googleapis/release-please/blob/main/docs/manifest-releaser.md).
-Each package then gets its own version, tag and changelog, and the publish step publishes every package the release
-bumped.
-
-```yml
-jobs:
-  release:
-    uses: entur/gha-npmjs/.github/workflows/release.yml@v1
-    with:
-      release_type: manifest
-      package_manager: yarn
-```
-
-The package list comes from `.release-please-manifest.json` (override with `manifest_file`). Packages whose version
-is already on npmjs are skipped, so a release that bumps two of seven packages publishes exactly those two. Set
-`skip_published: false` to fail instead. Packages marked `"private": true` are always skipped.
-
-> [!NOTE]
-> release-please reads `release-please-config.json` and `.release-please-manifest.json` from the repository root.
-> The publish step reads the manifest from `path`, so with `path` left at `.` both agree. To publish a single package
-> in a subdirectory with manifest mode, set `path` to that package and `packages: "."`, so the manifest is not read
-> from `path`:
->
-> ```yml
-> with:
->   path: packages/placeholder
->   release_type: manifest
->   packages: "."
-> ```
-
-Repository layout:
-
-```sh
-λ my-packages ❯ tree
-.
-├── lerna.json
-├── mise.toml
-├── package.json
-├── release-please-config.json
-├── .release-please-manifest.json
-└── packages
-    ├── common
-    │   └── package.json
-    └── util
-        └── package.json
-```
-
-`release-please-config.json` with the `node-workspace` plugin, which bumps internal dependencies between the
-workspace packages:
-
-```json
-{
-  "release-type": "node",
-  "tag-separator": "@",
-  "include-v-in-tag": false,
-  "packages": {
-    "packages/common": { "package-name": "@entur/common", "component": "@entur/common" },
-    "packages/util": { "package-name": "@entur/util", "component": "@entur/util" }
-  },
-  "plugins": ["node-workspace"]
-}
-```
-
-To publish a fixed set of packages instead, list them explicitly. Paths are relative to `path`:
-
-```yml
-jobs:
-  release:
-    uses: entur/gha-npmjs/.github/workflows/release.yml@v1
-    with:
-      release_type: manifest
-      packages: |
-        packages/util
-        packages/common
-```
-
-A working example lives in [`fixture/monorepo-npm`](fixture/monorepo-npm), modelled on
-[`entur/entur-partner-packages`](https://github.com/entur/entur-partner-packages).
-
-## How the publish step handles `workspace:` dependencies
-
-pnpm, yarn and bun let workspace packages depend on each other with the `workspace:` protocol, which they rewrite into
-a real semver range when packing:
-
-```jsonc
-// packages/app-shell/package.json, in the repository
-"dependencies": { "@entur/common": "workspace:*" }
-
-// the same file inside the published tarball
-"dependencies": { "@entur/common": "13.1.0" }
-```
-
-Which range gets published depends on the specifier: `workspace:*` pins the exact version, `workspace:~` publishes
-`~13.1.0` and `workspace:^` publishes `^13.1.0`. The fixtures use `workspace:*`, so consumers get exactly the
-combination that was released and tested together.
-
-The npm CLI does not understand the protocol — `npm pack` copies `workspace:*` into the tarball verbatim, and every
-consumer install of that version fails. So the publish step adapts to `package_manager`:
-
-| package_manager | How the tarball is built | How it is published |
-| --- | --- | --- |
-| `npm` | not applicable, npm cannot use `workspace:` ranges | `npm publish ./<package>` |
-| `pnpm` | `pnpm pack` | `npm publish <tarball>` |
-| `yarn` | `yarn pack` | `npm publish <tarball>` |
-| `bun` | `bun pm pack` | `npm publish <tarball>` |
-
-Publishing a prebuilt tarball keeps trusted publishing and provenance intact, since the npm CLI still performs the
-upload. Nothing changes for repositories that pin internal dependencies to exact versions — they simply have no
-`workspace:` ranges to rewrite.
-
-> [!WARNING]
-> npm runs `prepublishOnly` and `postpublish` only when publishing a directory, never for a tarball. With `pnpm`,
-> `yarn` or `bun` those scripts are therefore skipped (`prepack`/`prepare` still run during pack). Move any build or
-> test gate out of `prepublishOnly` into `build` or `prepack`, or it will not run before the upload.
-
-### Publish order
-
-Packages are published dependencies first, not in manifest order: the workflow reads the dependency graph of the
-packages taking part in the release and topologically sorts them. A package is therefore never published before a
-sibling it depends on, so a failure partway through a monorepo release cannot leave a released package pointing at a
-version that does not exist on npmjs. A dependency cycle between released packages fails the release.
-
-## Publishing a prerelease dist-tag
-
-```yml
-jobs:
-  release:
-    uses: entur/gha-npmjs/.github/workflows/release.yml@v1
-    with:
-      dist_tag: next
-```
-
-## Dry run from a pull request
-
-```yml
-# ci.yml
-on:
-  pull_request:
-
-# release.yml needs these permissions to start, even with `dry_run: true` where nothing uses them.
-# GitHub checks the permissions of the called workflow before the run starts, and a called workflow
-# cannot get more permissions than the caller gives it. Without them the run fails with
-# `startup_failure` and no jobs run.
-permissions:
-  contents: write
-  issues: write
-  pull-requests: write
-  id-token: write
-
-jobs:
-  publish-dry-run:
-    uses: entur/gha-npmjs/.github/workflows/release.yml@v1
-    with:
-      dry_run: true
-```
-
-## mise configuration
-
-After mise-action installs the toolchain, the workflow runs `mise which node` from `mise_working_directory`, falling
-back to `path`. It fails with an error if node is not pinned. mise's own lookup is used, so any file name mise supports
-counts, including a config in a parent directory (for example the repository root when `path` is a subfolder).
-
-```toml
-# mise.toml
-[tools]
-node = "24.21.0"
-pnpm = "12.4.2"
-```
-
-Trusted publishing requires npm >= 11.5.1. After install and build, the workflow always installs
-`npm@${{ inputs.npm_version }}` (default `12.1.0`) for publishing.
+| Problem | Fix |
+| --- | --- |
+| Run fails with `startup_failure` and no jobs start | Add all four permissions from [step 2](#step-2-add-the-release-workflow) to the calling workflow, also for dry runs. |
+| `node is not pinned in a mise configuration` | Add `node` to `mise.toml`, see [step 1](#step-1-pin-your-toolchain-with-mise). |
+| `npm publish` fails with an authentication error | Check the trusted publisher on npmjs. The workflow filename must match the file that calls this workflow. |
+| `release_type is 'manifest' but .release-please-manifest.json was not found` | Put the manifest at `path`, set `manifest_file`, or list packages with `packages`. |
+| `release-please reported a release but no tag_name` | With manifest mode, `path` is not one of the released packages. See [Monorepo](#monorepo). |
+| `depend on each other in a cycle` | Remove the dependency cycle between the released packages. |
+| `was packed with unresolved workspace: ranges` | Set `package_manager` to the package manager that owns the workspace. |
+| Provenance error when publishing | Your repository is not public. Remove `provenance: true`. |
