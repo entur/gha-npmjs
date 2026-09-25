@@ -48,9 +48,9 @@ on:
         type: string
         default: "latest"
       provenance:
-        description: "Publish with a provenance attestation (npm publish --provenance). Default: true"
+        description: "Publish with a provenance attestation (npm publish --provenance). Requires a public source repository. Default: false"
         type: boolean
-        default: true
+        default: false
       dry_run:
         description: "Run the publish step with --dry-run and skip the release-please job. Use to verify the setup from a pull request."
         type: boolean

@@ -71,7 +71,8 @@ jobs:
 ```
 
 The first push opens a release pull request. Merging that pull request creates the release, the tag and the GitHub
-release, and then publishes the new version to npmjs with a provenance attestation.
+release, and then publishes the new version to npmjs. Public repositories can add a provenance attestation with
+`provenance: true`.
 
 Verify the setup from a pull request without publishing anything:
 

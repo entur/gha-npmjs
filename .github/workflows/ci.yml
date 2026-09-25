@@ -37,7 +37,7 @@ jobs:
       path: fixture/npm-package
       dry_run: true
       dist_tag: next
-      provenance: false
+      provenance: true
 
   # Overrides of the install, build and mise inputs, and publishing without the already-published check.
   test-release-dry-run-overrides:
