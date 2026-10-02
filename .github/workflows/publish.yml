@@ -12,9 +12,9 @@ on:
         type: boolean
         default: true
       dist_tag:
-        description: "npm dist-tag to publish under. Default: latest"
+        description: "npm dist-tag to publish under. Default: empty, so npm uses latest and refuses to publish a prerelease version without an explicit tag"
         type: string
-        default: "latest"
+        default: ""
       provenance:
         description: "Publish with a provenance attestation (npm publish --provenance). Requires a public source repository. Default: false"
         type: boolean
@@ -68,7 +68,13 @@ jobs:
         run: |
           # Uses trusted publishing (OIDC), so no npm token is needed.
 
-          publish_args=("--access" "public" "--tag" "$GHA_NPMJS_DIST_TAG")
+          publish_args=("--access" "public")
+
+          # Only pass --tag when set. Passing it always turns off npm's check that refuses
+          # to publish a prerelease (e.g. 2.0.0-beta.1) as latest.
+          if [ -n "$GHA_NPMJS_DIST_TAG" ]; then
+            publish_args+=("--tag" "$GHA_NPMJS_DIST_TAG")
+          fi
 
           if [ "$GHA_NPMJS_PROVENANCE" = "true" ]; then
             publish_args+=("--provenance")
@@ -101,6 +107,11 @@ jobs:
 
             # A monorepo release bumps only some packages, so the others are already on npmjs.
             # Skip them instead of failing.
+            if [ "$GHA_NPMJS_DIST_TAG" = "latest" ] && [[ "$package_version" == *-* ]]; then
+              echo "::error::$package_name@$package_version is a prerelease and would be published as latest. Set dist_tag to another tag, e.g. next."
+              exit 1
+            fi
+
             if [ "$GHA_NPMJS_SKIP_PUBLISHED" = "true" ] && npm view "$package_name@$package_version" version > /dev/null 2>&1; then
               echo "Skipping $package_name@$package_version: already published"
               echo "| $package_name | $package_version | skipped (already published) |" >> "$GITHUB_STEP_SUMMARY"
@@ -122,5 +133,5 @@ jobs:
 
           {
             echo ""
-            echo "$published published, $skipped skipped. Dist-tag \`$GHA_NPMJS_DIST_TAG\`, provenance \`$GHA_NPMJS_PROVENANCE\`, dry run \`$GHA_NPMJS_DRY_RUN\`."
+            echo "$published published, $skipped skipped. Dist-tag \`${GHA_NPMJS_DIST_TAG:-latest}\`, provenance \`$GHA_NPMJS_PROVENANCE\`, dry run \`$GHA_NPMJS_DRY_RUN\`."
           } >> "$GITHUB_STEP_SUMMARY"

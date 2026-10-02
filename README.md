@@ -136,6 +136,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read # never give the build job an id-token
     outputs:
       artifact_name: ${{ steps.prepare-packages.outputs.artifact_name }}
     steps:
@@ -226,7 +228,11 @@ Each package gets its own version, tag and changelog. Set `release_type: manifes
 
   build:
     steps:
-      # ...checkout, toolchain
+      # No single tag_name in manifest mode, so build the commit that triggered the release
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+      # ...toolchain
       - run: yarn install --immutable
       - run: yarn workspaces foreach --all --topological run build
       - id: prepare-packages
@@ -297,6 +303,10 @@ Working examples: [`fixture/monorepo-npm`](fixture/monorepo-npm), [`fixture/mono
 
 ### Prerelease dist-tag
 
+By default no `--tag` is passed, so npm publishes under `latest` and refuses to publish a prerelease version such as
+`2.0.0-beta.1`. Set `dist_tag` to publish prereleases. `publish.yml` also fails if a prerelease would be published as
+`latest`:
+
 ```yml
   publish:
     with:
@@ -349,7 +359,7 @@ Add a job between `build` and `publish`. It downloads the artifact, so it tests 
   steps to your build job or `prepack`.
 - **Dependencies are published first.** In a monorepo, a package is never published before a package it depends on.
 - **Build the release tag.** Check out `needs.release.outputs.tag_name`. An empty `ref` makes `actions/checkout` build
-  the default branch.
+  the default branch. In manifest mode there is no single tag, so check out `github.sha`, the release commit.
 
 ## Troubleshooting
 
@@ -357,7 +367,7 @@ Add a job between `build` and `publish`. It downloads the artifact, so it tests 
 | --- | --- |
 | Run fails with `startup_failure` and no jobs start | Add all four permissions from [step 1](#step-1-add-the-release-workflow) to the calling workflow. |
 | `npm publish` fails with an authentication error | Check the trusted publisher on npmjs. The workflow filename must match the file that calls `publish.yml`. |
-| Build checks out the default branch instead of the tag | With manifest mode, `path` is not one of the released packages, so release-please has no `tag_name` for it. See [Monorepo](#monorepo). |
+| Build checks out the default branch instead of the tag | With manifest mode, `path` is not one of the released packages, so release-please has no `tag_name` for it. Check out `github.sha` instead, see [Monorepo](#monorepo). |
 | `release_type is 'manifest' but .release-please-manifest.json was not found` | Put the manifest at `path`, set `manifest_file`, or list packages with `packages` on the `prepare-packages` step. |
 | `depend on each other in a cycle` | Remove the dependency cycle between the released packages. |
 | `was packed with unresolved workspace: ranges` | Set `package_manager` on the `prepare-packages` step to the package manager that owns the workspace. |

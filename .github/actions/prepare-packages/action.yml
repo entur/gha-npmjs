@@ -147,6 +147,8 @@ runs:
       env:
         GHA_NPMJS_PACKAGE_MANAGER: ${{ inputs.package_manager }}
         GHA_NPMJS_ARTIFACT_NAME: ${{ inputs.artifact_name }}
+        GHA_NPMJS_RUN_ID: ${{ github.run_id }}
+        GHA_NPMJS_RUN_ATTEMPT: ${{ github.run_attempt }}
         GHA_NPMJS_PACKAGE_DIRS: ${{ steps.resolve-packages.outputs.package_dirs }}
         GHA_NPMJS_TARBALL_DIR: ${{ runner.temp }}/gha-npmjs-tarballs
       run: |
@@ -217,7 +219,8 @@ runs:
         cat "$publish_order"
 
         # Artifact names must be unique within a run, so generate one unless the caller picked it.
-        echo "artifact_name=${GHA_NPMJS_ARTIFACT_NAME:-gha-npmjs-tarballs-$(cat /proc/sys/kernel/random/uuid)}" >> "$GITHUB_OUTPUT"
+        # /dev/urandom and od exist on Linux, macOS and Git Bash on Windows.
+        echo "artifact_name=${GHA_NPMJS_ARTIFACT_NAME:-gha-npmjs-tarballs-$GHA_NPMJS_RUN_ID-$GHA_NPMJS_RUN_ATTEMPT-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')}" >> "$GITHUB_OUTPUT"
 
     - name: Upload tarballs
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

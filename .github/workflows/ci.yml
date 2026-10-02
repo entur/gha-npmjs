@@ -131,6 +131,6 @@ jobs:
     with:
       artifact_name: tarballs-${{ matrix.artifact }}
       dry_run: true
-      dist_tag: ${{ matrix.dist_tag || 'latest' }}
+      dist_tag: ${{ matrix.dist_tag || '' }}
       provenance: ${{ matrix.provenance == true }}
       skip_published: ${{ matrix.skip_published != false }}
