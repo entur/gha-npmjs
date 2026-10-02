@@ -1,12 +1,12 @@
 # Fixtures
 
-Test packages the reusable workflows run against in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), always
+Test packages the prepare-packages action and publish workflow run against in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), always
 with `dry_run: true` so nothing reaches npmjs. Every fixture pins its toolchain in `mise.toml` and commits its
-lockfile, so the workflow's frozen-lockfile install is exercised for real.
+lockfile, so CI's frozen-lockfile install is exercised for real.
 
 | Fixture | Package manager | Covers |
 | --- | --- | --- |
-| [`npm-package`](npm-package) | npm | `npm ci`, the default single-package path, dist-tag and provenance overrides, `install_command`, `build_command`, `mise_working_directory` and `skip_published: false` |
+| [`npm-package`](npm-package) | npm | `npm ci`, the default single-package path, dist-tag and provenance overrides and `skip_published: false` |
 | [`pnpm-package`](pnpm-package) | pnpm | `pnpm install --frozen-lockfile` |
 | [`yarn-package`](yarn-package) | yarn 4 (`node-modules` linker) | `yarn install --immutable` |
 | [`bun-package`](bun-package) | bun | `bun install --frozen-lockfile` |
@@ -15,9 +15,9 @@ lockfile, so the workflow's frozen-lockfile install is exercised for real.
 | [`monorepo-yarn`](monorepo-yarn) | yarn 4 workspaces | `workspace:*` ranges pinned to the exact version by `yarn pack` before publish |
 | [`monorepo-bun`](monorepo-bun) | bun workspaces | `workspace:*` ranges pinned to the exact version by `bun pm pack` before publish |
 
-The publish step always uploads through the npm CLI, since trusted publishing (OIDC) is an npm CLI feature. For
-pnpm, yarn and bun the tarball is built by that package manager first, so `workspace:` ranges are rewritten to real
-semver ranges — npm would publish them verbatim. The workflow inspects every tarball and fails the release if a
+The publish job always uploads through the npm CLI, since trusted publishing (OIDC) is an npm CLI feature. The prepare-packages
+action packs each tarball with the fixture's package manager, so for pnpm, yarn and bun `workspace:` ranges are rewritten
+to real semver ranges — npm would publish them verbatim. The action inspects every tarball and fails the release if a
 `workspace:` range survived packing.
 
 The npm fixtures pin internal dependencies to exact versions instead, because npm cannot install `workspace:` ranges
