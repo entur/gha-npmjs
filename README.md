@@ -73,7 +73,7 @@ jobs:
     if: ${{ needs.release.outputs.releases_created == 'true' }}
     runs-on: ubuntu-24.04
     permissions:
-      contents: read # never give the build job an id-token
+      contents: read
     outputs:
       artifact_name: ${{ steps.prepare-packages.outputs.artifact_name }}
     steps:
@@ -137,7 +137,7 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     permissions:
-      contents: read # never give the build job an id-token
+      contents: read
     outputs:
       artifact_name: ${{ steps.prepare-packages.outputs.artifact_name }}
     steps:
