@@ -1,0 +1,30 @@
+{
+  "lockfileVersion": 2,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "gha-npmjs-fixture-monorepo-bun",
+    },
+    "packages/common": {
+      "name": "@entur/gha-npmjs-fixture-bun-common",
+      "version": "0.0.0",
+      "dependencies": {
+        "@entur/gha-npmjs-fixture-bun-util": "workspace:^",
+      },
+    },
+    "packages/util": {
+      "name": "@entur/gha-npmjs-fixture-bun-util",
+      "version": "0.0.0",
+      "dependencies": {
+        "tslib": "2.8.1",
+      },
+    },
+  },
+  "packages": {
+    "@entur/gha-npmjs-fixture-bun-common": ["@entur/gha-npmjs-fixture-bun-common@workspace:packages/common"],
+
+    "@entur/gha-npmjs-fixture-bun-util": ["@entur/gha-npmjs-fixture-bun-util@workspace:packages/util"],
+
+    "tslib": ["tslib@2.8.1", "", {}, "sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w=="],
+  }
+}

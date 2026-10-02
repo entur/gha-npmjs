@@ -1,0 +1,231 @@
+name: Entur/Npmjs/PreparePackages
+description: "Resolve the packages to publish, pack them into tarballs in dependency order and upload them for publish.yml. Run it as the last step of your build job, after install and build."
+
+inputs:
+  path:
+    description: "Path to the package in the repository (where package.json lives)"
+    default: "."
+  release_type:
+    description: "release-please release type. With manifest, the packages to pack are read from manifest_file. Default: node"
+    default: "node"
+  manifest_file:
+    description: "Path to the release-please versions manifest, relative to 'path'. Used to discover which packages to pack when release_type=manifest. Default: .release-please-manifest.json"
+    default: ".release-please-manifest.json"
+  packages:
+    description: "Newline-separated list of package directories to pack, relative to 'path'. Default: every package in the release-please manifest when release_type=manifest, otherwise the package at 'path'."
+    default: ""
+  package_manager:
+    description: "Package manager that installed the workspace and packs the tarballs. npm|pnpm|yarn|bun. pnpm, yarn and bun replace workspace: ranges with real versions."
+    # Composite actions don't enforce required, so the first step checks it.
+    required: true
+  artifact_name:
+    description: "Name of the uploaded artifact. Must be unique within the run. Default: a generated name"
+    default: ""
+
+outputs:
+  artifact_name:
+    description: "Name of the GitHub artifact with the packed tarballs and publish-order.tsv. Pass it to publish.yml."
+    value: ${{ steps.pack.outputs.artifact_name }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check package manager
+      shell: bash --noprofile --norc -euo pipefail {0}
+      env:
+        GHA_NPMJS_PACKAGE_MANAGER: ${{ inputs.package_manager }}
+      run: |
+        case "$GHA_NPMJS_PACKAGE_MANAGER" in
+          npm|pnpm|yarn|bun) ;;
+          *)
+            echo "::error::package_manager is required and must be one of: npm, pnpm, yarn, bun. Got '$GHA_NPMJS_PACKAGE_MANAGER'."
+            exit 1
+            ;;
+        esac
+
+    - name: Resolve packages to publish
+      id: resolve-packages
+      shell: bash --noprofile --norc -euo pipefail {0}
+      working-directory: ${{ inputs.path }}
+      env:
+        GHA_NPMJS_PACKAGES: ${{ inputs.packages }}
+        GHA_NPMJS_MANIFEST_FILE: ${{ inputs.manifest_file }}
+        GHA_NPMJS_RELEASE_TYPE: ${{ inputs.release_type }}
+      run: |
+        # Outputs the package directories to publish, in publish order.
+
+        # Publish dependencies before the packages that use them, so a failed release never
+        # leaves a package pointing at a version that is not on npmjs.
+        sort_topologically() {
+          local dirs="$1"
+          local names_json edges ordered tsort_stderr
+
+          # Maps each package name to its directory, for every package in this release.
+          names_json="$(
+            while IFS= read -r dir; do
+              [ -z "$dir" ] && continue
+              jq --arg dir "$dir" '{(.name): $dir}' "$dir/package.json"
+            done <<< "$dirs" | jq -s 'add // {}'
+          )"
+
+          # One line "<dependency directory> <dependent directory>" for each dependency that is
+          # also in this release. devDependencies are left out: consumers never install them, so
+          # they do not affect the publish order and would only report false cycles.
+          edges="$(
+            while IFS= read -r dir; do
+              [ -z "$dir" ] && continue
+              jq -r --argjson names "$names_json" --arg dir "$dir" '
+                [.dependencies, .peerDependencies, .optionalDependencies]
+                | map(select(. != null) | keys) | flatten | unique
+                | map(select($names[.] != null and $names[.] != $dir) | "\($names[.]) \($dir)")
+                | .[]' "$dir/package.json"
+            done <<< "$dirs"
+          )"
+
+          # No package depends on another, so keep the given order.
+          if [ -z "$edges" ]; then
+            echo "$dirs"
+            return 0
+          fi
+
+          # On a cycle, GNU tsort exits with 1 and BSD tsort only prints a warning. Fail on both.
+          tsort_stderr="$(mktemp)"
+          if ! ordered="$(tsort <<< "$edges" 2>"$tsort_stderr")" || [ -s "$tsort_stderr" ]; then
+            echo "::error::The packages being released depend on each other in a cycle, so there is no safe publish order."
+            cat "$tsort_stderr" >&2
+            echo "$edges" >&2
+            rm -f "$tsort_stderr"
+            return 1
+          fi
+          rm -f "$tsort_stderr"
+
+          # tsort only prints packages that have a dependency line. Add the others after them,
+          # in their original order.
+          {
+            echo "$ordered"
+            grep -vxF -f <(echo "$ordered") <<< "$dirs" || true
+          } | sed '/^[[:space:]]*$/d'
+        }
+
+        if [ -n "$GHA_NPMJS_PACKAGES" ]; then
+          package_dirs="$(echo "$GHA_NPMJS_PACKAGES" | sed '/^[[:space:]]*$/d')"
+          echo "Publishing the packages given in the 'packages' input"
+        elif [ "$GHA_NPMJS_RELEASE_TYPE" = "manifest" ]; then
+          if [ ! -f "$GHA_NPMJS_MANIFEST_FILE" ]; then
+            echo "::error::release_type is 'manifest' but $GHA_NPMJS_MANIFEST_FILE was not found in $(pwd). Provide manifest_file, or list the package directories in the 'packages' input."
+            exit 1
+          fi
+          package_dirs="$(jq -r 'keys[]' "$GHA_NPMJS_MANIFEST_FILE")"
+          echo "Publishing the packages listed in $GHA_NPMJS_MANIFEST_FILE"
+        else
+          package_dirs="."
+        fi
+
+        # Check that every package.json exists before reading the dependencies.
+        while IFS= read -r package_dir; do
+          [ -z "$package_dir" ] && continue
+          if [ ! -f "$package_dir/package.json" ]; then
+            echo "::error::No package.json in $package_dir"
+            exit 1
+          fi
+        done <<< "$package_dirs"
+
+        package_dirs="$(sort_topologically "$package_dirs")"
+
+        echo "Publish order (dependencies first):"
+        echo "$package_dirs"
+        {
+          echo "package_dirs<<EOF"
+          echo "$package_dirs"
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Pack packages
+      id: pack
+      shell: bash --noprofile --norc -euo pipefail {0}
+      working-directory: ${{ inputs.path }}
+      env:
+        GHA_NPMJS_PACKAGE_MANAGER: ${{ inputs.package_manager }}
+        GHA_NPMJS_ARTIFACT_NAME: ${{ inputs.artifact_name }}
+        GHA_NPMJS_RUN_ID: ${{ github.run_id }}
+        GHA_NPMJS_RUN_ATTEMPT: ${{ github.run_attempt }}
+        GHA_NPMJS_PACKAGE_DIRS: ${{ steps.resolve-packages.outputs.package_dirs }}
+        GHA_NPMJS_TARBALL_DIR: ${{ runner.temp }}/gha-npmjs-tarballs
+      run: |
+        # Writes one tarball per package and publish-order.tsv, with one line per package in
+        # publish order: "<tarball> <name> <version>", tab separated. Private packages get "-"
+        # as tarball, so the publish job can still list them as skipped.
+
+        rm -rf "$GHA_NPMJS_TARBALL_DIR"
+        mkdir -p "$GHA_NPMJS_TARBALL_DIR"
+        publish_order="$GHA_NPMJS_TARBALL_DIR/publish-order.tsv"
+        : > "$publish_order"
+        pack_dir="$RUNNER_TEMP/gha-npmjs-pack"
+        index=0
+
+        while IFS= read -r package_dir; do
+          [ -z "$package_dir" ] && continue
+
+          package_name="$(jq -r .name "$package_dir/package.json")"
+          package_version="$(jq -r .version "$package_dir/package.json")"
+
+          if [ "$(jq -r '.private // false' "$package_dir/package.json")" = "true" ]; then
+            echo "Not packing $package_name: marked private in package.json"
+            printf '%s\t%s\t%s\n' "-" "$package_name" "$package_version" >> "$publish_order"
+            continue
+          fi
+
+          echo "::group::Packing $package_name@$package_version"
+          rm -rf "$pack_dir"
+          mkdir -p "$pack_dir"
+
+          # pnpm, yarn and bun replace `workspace:` ranges with real versions when they pack.
+          # The npm CLI would publish them as-is, which breaks installs for users of the package.
+          case "$GHA_NPMJS_PACKAGE_MANAGER" in
+            npm)  npm pack --workspaces=false --pack-destination "$pack_dir" "./$package_dir" ;;
+            pnpm) (cd "$package_dir" && pnpm pack --pack-destination "$pack_dir") ;;
+            yarn) (cd "$package_dir" && yarn pack --out "$pack_dir/package.tgz") ;;
+            bun)  (cd "$package_dir" && bun pm pack --destination "$pack_dir") ;;
+          esac
+
+          packed="$(find "$pack_dir" -name '*.tgz' -maxdepth 1 | head -n1)"
+          if [ -z "$packed" ]; then
+            echo "::error::$GHA_NPMJS_PACKAGE_MANAGER pack produced no tarball for $package_name"
+            exit 1
+          fi
+
+          # Stop if the packed package.json still has a `workspace:` range.
+          packed_workspace_ranges="$(tar -xzOf "$packed" package/package.json \
+            | jq -r '[.dependencies, .devDependencies, .peerDependencies, .optionalDependencies]
+                     | map(select(. != null) | to_entries) | flatten
+                     | map(select(.value | tostring | startswith("workspace:")))
+                     | map("\(.key)@\(.value)") | join(", ")')"
+
+          if [ -n "$packed_workspace_ranges" ]; then
+            echo "::error::$package_name was packed with unresolved workspace: ranges ($packed_workspace_ranges). Publishing it would break every consumer install."
+            exit 1
+          fi
+
+          # Numbered names, since package names can contain characters that are awkward in file names.
+          index=$((index + 1))
+          tarball="$index.tgz"
+          mv "$packed" "$GHA_NPMJS_TARBALL_DIR/$tarball"
+          printf '%s\t%s\t%s\n' "$tarball" "$package_name" "$package_version" >> "$publish_order"
+          echo "Packed $package_name@$package_version as $tarball"
+          echo "::endgroup::"
+        done <<< "$GHA_NPMJS_PACKAGE_DIRS"
+
+        echo "Publish order:"
+        cat "$publish_order"
+
+        # Artifact names must be unique within a run, so generate one unless the caller picked it.
+        # /dev/urandom and od exist on Linux, macOS and Git Bash on Windows.
+        echo "artifact_name=${GHA_NPMJS_ARTIFACT_NAME:-gha-npmjs-tarballs-$GHA_NPMJS_RUN_ID-$GHA_NPMJS_RUN_ATTEMPT-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')}" >> "$GITHUB_OUTPUT"
+
+    - name: Upload tarballs
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: ${{ steps.pack.outputs.artifact_name }}
+        path: ${{ runner.temp }}/gha-npmjs-tarballs
+        if-no-files-found: error
+        retention-days: 1

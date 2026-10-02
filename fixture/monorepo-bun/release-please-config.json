@@ -1,0 +1,21 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "node",
+  "tag-separator": "@",
+  "include-v-in-tag": false,
+  "packages": {
+    "packages/common": {
+      "package-name": "@entur/gha-npmjs-fixture-bun-common",
+      "component": "@entur/gha-npmjs-fixture-bun-common",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "packages/util": {
+      "package-name": "@entur/gha-npmjs-fixture-bun-util",
+      "component": "@entur/gha-npmjs-fixture-bun-util",
+      "changelog-path": "CHANGELOG.md"
+    }
+  },
+  "plugins": [
+    "node-workspace"
+  ]
+}

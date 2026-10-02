@@ -1,0 +1,13 @@
+{
+  "name": "@entur/gha-npmjs-fixture-util",
+  "version": "0.0.0",
+  "description": "Fixture workspace package. Never published.",
+  "license": "EUPL-1.2",
+  "main": "index.js",
+  "files": [
+    "index.js"
+  ],
+  "scripts": {
+    "build": "node -e \"console.log('util build ok')\""
+  }
+}

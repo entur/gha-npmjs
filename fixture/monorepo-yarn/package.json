@@ -1,0 +1,13 @@
+{
+  "name": "gha-npmjs-fixture-monorepo-yarn",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Fixture yarn monorepo using the workspace: protocol. Never published.",
+  "license": "EUPL-1.2",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "yarn workspaces foreach --all --topological run build"
+  }
+}

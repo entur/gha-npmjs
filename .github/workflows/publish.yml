@@ -1,0 +1,137 @@
+name: Entur/Npmjs/Publish
+
+on:
+  workflow_call:
+    inputs:
+      artifact_name:
+        description: "Name of the GitHub artifact with the tarballs, from the artifact_name output of the prepare-packages action"
+        type: string
+        required: true
+      skip_published:
+        description: "Skip packages whose version already exists on npmjs, instead of failing. Keeps monorepo releases idempotent, since only some packages are bumped per release. Default: true"
+        type: boolean
+        default: true
+      dist_tag:
+        description: "npm dist-tag to publish under. Default: empty, so npm uses latest and refuses to publish a prerelease version without an explicit tag"
+        type: string
+        default: ""
+      provenance:
+        description: "Publish with a provenance attestation (npm publish --provenance). Requires a public source repository. Default: false"
+        type: boolean
+        default: false
+      dry_run:
+        description: "Run npm publish with --dry-run, so nothing is published."
+        type: boolean
+        default: false
+      timeout_minutes:
+        description: "Timeout in minutes for the publish job"
+        type: number
+        default: 15
+
+jobs:
+  # Publishes the tarballs from the prepare-packages action. Nothing from the repository runs here: no checkout,
+  # no install, no lifecycle scripts. This is the only job with an id-token.
+  publish:
+    name: Publish to npmjs
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+      id-token: write # Required for npm trusted publishing (OIDC) and provenance
+    defaults:
+      run:
+        shell: bash --noprofile --norc -euo pipefail {0}
+    env:
+      GHA_NPMJS_DIST_TAG: ${{ inputs.dist_tag }}
+      GHA_NPMJS_PROVENANCE: ${{ inputs.provenance }}
+      GHA_NPMJS_DRY_RUN: ${{ inputs.dry_run }}
+      GHA_NPMJS_SKIP_PUBLISHED: ${{ inputs.skip_published }}
+    steps:
+      - name: Setup node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          # Only runs the npm CLI on finished tarballs, so the build's node version doesn't matter.
+          # Pinned, so the bundled npm is pinned too: node 26.10.0 ships npm 11.19.1, and trusted
+          # publishing (OIDC) needs npm 11.5.1 or newer. Bump by hand, Dependabot can't update this.
+          node-version: "26.10.0"
+          # No caching in a job with an id-token, so a poisoned cache can't reach the OIDC token.
+          package-manager-cache: false
+
+      - name: Download tarballs
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: tarballs
+
+      - name: Publish to npmjs
+        working-directory: tarballs
+        run: |
+          # Uses trusted publishing (OIDC), so no npm token is needed.
+
+          publish_args=("--access" "public")
+
+          # Only pass --tag when set. Passing it always turns off npm's check that refuses
+          # to publish a prerelease (e.g. 2.0.0-beta.1) as latest.
+          if [ -n "$GHA_NPMJS_DIST_TAG" ]; then
+            publish_args+=("--tag" "$GHA_NPMJS_DIST_TAG")
+          fi
+
+          if [ "$GHA_NPMJS_PROVENANCE" = "true" ]; then
+            publish_args+=("--provenance")
+          fi
+
+          if [ "$GHA_NPMJS_DRY_RUN" = "true" ]; then
+            publish_args+=("--dry-run")
+            echo "::notice::Dry run, nothing is published on npmjs"
+          fi
+
+          {
+            echo "### npmjs Publish"
+            echo ""
+            echo "| Package | Version | Result |"
+            echo "| --- | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          published=0
+          skipped=0
+
+          while IFS=$'\t' read -r tarball package_name package_version; do
+            [ -z "$tarball" ] && continue
+
+            if [ "$tarball" = "-" ]; then
+              echo "Skipping $package_name: marked private in package.json"
+              echo "| $package_name | $package_version | skipped (private) |" >> "$GITHUB_STEP_SUMMARY"
+              skipped=$((skipped + 1))
+              continue
+            fi
+
+            # A monorepo release bumps only some packages, so the others are already on npmjs.
+            # Skip them instead of failing.
+            if [ "$GHA_NPMJS_DIST_TAG" = "latest" ] && [[ "$package_version" == *-* ]]; then
+              echo "::error::$package_name@$package_version is a prerelease and would be published as latest. Set dist_tag to another tag, e.g. next."
+              exit 1
+            fi
+
+            if [ "$GHA_NPMJS_SKIP_PUBLISHED" = "true" ] && npm view "$package_name@$package_version" version > /dev/null 2>&1; then
+              echo "Skipping $package_name@$package_version: already published"
+              echo "| $package_name | $package_version | skipped (already published) |" >> "$GITHUB_STEP_SUMMARY"
+              skipped=$((skipped + 1))
+              continue
+            fi
+
+            echo "::group::Uploading $package_name@$package_version"
+            npm publish "${publish_args[@]}" "./$tarball"
+            echo "::endgroup::"
+
+            if [ "$GHA_NPMJS_DRY_RUN" = "true" ]; then
+              echo "| $package_name | $package_version | dry run |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "| $package_name | $package_version | published |" >> "$GITHUB_STEP_SUMMARY"
+            fi
+            published=$((published + 1))
+          done < publish-order.tsv
+
+          {
+            echo ""
+            echo "$published published, $skipped skipped. Dist-tag \`${GHA_NPMJS_DIST_TAG:-latest}\`, provenance \`$GHA_NPMJS_PROVENANCE\`, dry run \`$GHA_NPMJS_DRY_RUN\`."
+          } >> "$GITHUB_STEP_SUMMARY"
