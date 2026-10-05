@@ -1,0 +1,136 @@
+name: Entur/Npmjs/CI
+
+on:
+  pull_request:
+    # `edited` is not a default type. It is needed so that changing the PR title runs
+    # verify-pr again with the new title.
+    types: [opened, synchronize, reopened, edited]
+  workflow_dispatch:
+
+# Each fixture is installed, built and packed with the prepare-packages action, then run through publish.yml
+# with dry_run, so nothing is published.
+permissions:
+  contents: read
+  pull-requests: write # verify-pr
+  id-token: write # Required by publish.yml
+
+jobs:
+  verify-pr:
+    name: Verify PR
+    if: ${{ github.event_name == 'pull_request' }}
+    uses: entur/gha-meta/.github/workflows/verify-pr.yml@c14eef7f4d90ed1be2c1df4dfb0927322bcbb3ba # v1.9.0
+
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: npm
+            path: fixture/npm-package
+            package_manager: npm
+            install: npm ci
+          - name: pnpm
+            path: fixture/pnpm-package
+            package_manager: pnpm
+            install: pnpm install --frozen-lockfile
+          - name: yarn
+            path: fixture/yarn-package
+            package_manager: yarn
+            install: yarn install --immutable
+          - name: bun
+            path: fixture/bun-package
+            package_manager: bun
+            install: bun install --frozen-lockfile
+          # Manifest mode. Packs every package listed in .release-please-manifest.json.
+          - name: monorepo-npm
+            path: fixture/monorepo-npm
+            package_manager: npm
+            install: npm ci
+            release_type: manifest
+          # A package list instead of the manifest. common depends on util but is listed first, to
+          # test the publish order. The step summary must show util before common.
+          - name: monorepo-npm-explicit-packages
+            path: fixture/monorepo-npm
+            package_manager: npm
+            install: npm ci
+            packages: |
+              packages/common
+              packages/util
+          # Monorepos that use the workspace: protocol. Tests that `workspace:` ranges are replaced
+          # with real versions when packing.
+          - name: monorepo-pnpm
+            path: fixture/monorepo-pnpm
+            package_manager: pnpm
+            install: pnpm install --frozen-lockfile
+            release_type: manifest
+          - name: monorepo-yarn
+            path: fixture/monorepo-yarn
+            package_manager: yarn
+            install: yarn install --immutable
+            release_type: manifest
+          - name: monorepo-bun
+            path: fixture/monorepo-bun
+            package_manager: bun
+            install: bun install --frozen-lockfile
+            release_type: manifest
+    defaults:
+      run:
+        shell: bash --noprofile --norc -euo pipefail {0}
+        working-directory: ${{ matrix.path }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: "2026.9.14"
+          working_directory: ${{ matrix.path }}
+          cache: false
+
+      - name: Install
+        run: ${{ matrix.install }}
+
+      - name: Build
+        run: ${{ matrix.package_manager }} run build
+
+      - uses: ./.github/actions/prepare-packages
+        with:
+          path: ${{ matrix.path }}
+          package_manager: ${{ matrix.package_manager }}
+          release_type: ${{ matrix.release_type || 'node' }}
+          packages: ${{ matrix.packages }}
+          artifact_name: tarballs-${{ matrix.name }}
+
+  publish:
+    name: Publish ${{ matrix.name }}
+    needs: build
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: npm, artifact: npm }
+          - { name: pnpm, artifact: pnpm }
+          - { name: yarn, artifact: yarn }
+          - { name: bun, artifact: bun }
+          - { name: monorepo-npm, artifact: monorepo-npm }
+          - { name: monorepo-npm-explicit-packages, artifact: monorepo-npm-explicit-packages }
+          - { name: monorepo-pnpm, artifact: monorepo-pnpm }
+          - { name: monorepo-yarn, artifact: monorepo-yarn }
+          - { name: monorepo-bun, artifact: monorepo-bun }
+          # Publish overrides, reusing the npm tarballs.
+          - { name: dist-tag-provenance, artifact: npm, dist_tag: next, provenance: true }
+          - { name: no-skip-published, artifact: npm, skip_published: false }
+    uses: ./.github/workflows/publish.yml
+    with:
+      artifact_name: tarballs-${{ matrix.artifact }}
+      dry_run: true
+      dist_tag: ${{ matrix.dist_tag || '' }}
+      provenance: ${{ matrix.provenance == true }}
+      skip_published: ${{ matrix.skip_published != false }}

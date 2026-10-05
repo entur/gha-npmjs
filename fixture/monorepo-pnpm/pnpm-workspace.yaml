@@ -1,0 +1,7 @@
+packages:
+  - "packages/*"
+
+# Only install package versions that are at least 5 days old (7200 minutes is 5 days). See fixture/README.md.
+minimumReleaseAge: 7200
+minimumReleaseAgeExclude:
+  - "@entur/*"
