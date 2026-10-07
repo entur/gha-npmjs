@@ -100,8 +100,12 @@ jobs:
 ```
 
 The three top-level permissions are required by gha-meta's `release.yml`. Only the `publish` job asks for
-`id-token: write`, so it is the only job that can get an id-token. See [gha-meta](https://github.com/entur/gha-meta) for the release
-inputs and outputs.
+`id-token: write`, so it is the only job that can get an id-token. See [gha-meta](https://github.com/entur/gha-meta)
+for the release inputs and outputs.
+
+> [!TIP]
+> Your package builds in `prepack` (`"prepack": "npm run build"`)? Drop the `npm run build` step, `prepare-packages`
+> runs it when it packs. Without `prepack`, keep the step, or the tarball is packed without your build output.
 
 ### Step 2: Configure the trusted publisher on npmjs
 
