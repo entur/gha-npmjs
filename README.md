@@ -167,13 +167,13 @@ one pull request workflow each for npm, yarn, bun and a yarn + lerna monorepo.
 
 ### Package in a subdirectory
 
-Set `path` on `release` and on the `prepare-packages` step, and run your install and build there:
+release-please ignores `path` outside manifest mode and looks for `package.json` at the repository root. Use manifest
+mode with a single package instead:
 
 ```yml
   release:
     with:
-      release_type: node
-      path: packages/amazing-lib
+      release_type: manifest
 
   build:
     defaults:
@@ -185,8 +185,26 @@ Set `path` on `release` and on the `prepare-packages` step, and run your install
         uses: entur/gha-npmjs/.github/actions/prepare-packages@v1
         with:
           package_manager: npm
-          path: packages/amazing-lib
+          release_type: manifest
 ```
+
+Add `release-please-config.json` and `.release-please-manifest.json` at the repository root:
+
+```json
+{
+  "packages": {
+    "packages/amazing-lib": { "release-type": "node" }
+  }
+}
+```
+
+```json
+{
+  "packages/amazing-lib": "1.0.0"
+}
+```
+
+With a single package, `needs.release.outputs.tag_name` is that package's tag, so keep the checkout `ref` from step 1.
 
 ### pnpm, yarn or bun
 
@@ -355,7 +373,8 @@ Add a job between `build` and `publish`. It downloads the artifact, so it tests 
   steps to your build job or `prepack`.
 - **Dependencies are published first.** In a monorepo, a package is never published before a package it depends on.
 - **Build the release tag.** Check out `needs.release.outputs.tag_name`. An empty `ref` makes `actions/checkout` build
-  the default branch. In manifest mode there is no single tag, so check out `github.sha`, the release commit.
+  the default branch. With several packages in the manifest there is no single tag, so check out `github.sha`, the
+  release commit.
 
 ## Troubleshooting
 
@@ -363,7 +382,7 @@ Add a job between `build` and `publish`. It downloads the artifact, so it tests 
 | --- | --- |
 | Run fails with `startup_failure` and no jobs start | Add the top-level permissions and the `publish` job's `id-token: write` from [step 1](#step-1-add-the-release-workflow). |
 | `npm publish` fails with an authentication error | Check the trusted publisher on npmjs. The workflow filename must match the file that calls `publish.yml`. |
-| Build checks out the default branch instead of the tag | Manifest mode has no single `tag_name`, so check out `github.sha` instead, see [Monorepo](#monorepo). |
+| Build checks out the default branch instead of the tag | With several packages in the manifest there is no single `tag_name`, so check out `github.sha` instead, see [Monorepo](#monorepo). |
 | `release_type is 'manifest' but .release-please-manifest.json was not found` | Put the manifest at `path`, set `manifest_file`, or list packages with `packages` on the `prepare-packages` step. |
 | `depend on each other in a cycle` | Remove the dependency cycle between the released packages. |
 | `was packed with unresolved workspace: ranges` | Set `package_manager` on the `prepare-packages` step to the package manager that owns the workspace. |
