@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/entur/gha-npmjs/compare/v1.0.0...v1.1.0) (2026-10-07)
+
+
+### Features
+
+* **prepare-packages:** fail when package.json points at files missing from the tarball ([#8](https://github.com/entur/gha-npmjs/issues/8)) ([d839961](https://github.com/entur/gha-npmjs/commit/d839961a9a21fff1aba77c4b870b549433afc28d))
+
 ## 1.0.0 (2026-10-05)
 
 
