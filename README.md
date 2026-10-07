@@ -9,7 +9,7 @@ You build your package the way you like. gha-npmjs packs and publishes it. Use i
 
 | Piece | Does | Permissions |
 | --- | --- | --- |
-| [`gha-meta/release.yml`](https://github.com/entur/gha-meta) | Runs release-please: opens the release pull request, creates the tag and GitHub release | `contents`, `pull-requests`, `issues: write` |
+| [`gha-meta/release.yml`](https://github.com/entur/gha-meta) | Runs release-please: opens the release pull request, creates the tag and GitHub release | `contents`/`pull-requests`/`issues`: write |
 | Your build job + [`prepare-packages` action](README-prepare-packages.md) | You check out, install and build. `prepare-packages` resolves the packages, packs them in dependency order and uploads them | `contents: read` |
 | [`publish.yml`](README-publish.md) | Uploads the tarballs to npmjs. No checkout, runs nothing from your repository | `id-token: write` |
 
@@ -39,7 +39,7 @@ You build your package the way you like. gha-npmjs packs and publishes it. Use i
 3. Your build job checks out the tag, installs and builds. Its last step, the `prepare-packages` action, packs the packages.
 4. `publish.yml` uploads the tarballs to npmjs.
 
-Build and publish only run when a release was created. Pull requests are tested with a dry run, see
+Build and publish only run when a release was created. Pull requests can build and pack, see
 [step 3](#step-3-test-it-from-a-pull-request-optional).
 
 ## Setup
@@ -60,7 +60,6 @@ permissions:
   contents: write
   pull-requests: write
   issues: write
-  id-token: write # trusted publishing (OIDC)
 
 jobs:
   release:
@@ -80,7 +79,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.release.outputs.tag_name }} # build the release tag, not the branch head
-      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+      - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
         with:
           cache: false
       - run: npm ci
@@ -100,8 +99,8 @@ jobs:
       artifact_name: ${{ needs.build.outputs.artifact_name }}
 ```
 
-All four top-level permissions are required by gha-meta's `release.yml`. The `build` and `publish` jobs narrow
-them down, so only `publish` can get an id-token. See [gha-meta](https://github.com/entur/gha-meta) for the release
+The three top-level permissions are required by gha-meta's `release.yml`. Only the `publish` job asks for
+`id-token: write`, so it is the only job that can get an id-token. See [gha-meta](https://github.com/entur/gha-meta) for the release
 inputs and outputs.
 
 ### Step 2: Configure the trusted publisher on npmjs
@@ -120,8 +119,9 @@ On npmjs.com, open your package → **Settings** → **Trusted publisher** → *
 
 ### Step 3: Test it from a pull request (optional)
 
-A dry run builds, packs and runs `npm publish --dry-run`. Nothing is released or published. Create
-`.github/workflows/ci.yml` with the same `build` steps as `cd.yml`, without `needs`, `if` and the checkout `ref`:
+Build and pack on every pull request, so a broken build or an unresolved `workspace:` range fails before release.
+Nothing is released or published. Create `.github/workflows/ci.yml` with the same `build` steps as `cd.yml`,
+without `needs`, `if` and the checkout `ref`:
 
 ```yml
 name: CI
@@ -131,18 +131,13 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   build:
     runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-    outputs:
-      artifact_name: ${{ steps.prepare-packages.outputs.artifact_name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+      - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
         with:
           cache: false
       - run: npm ci
@@ -151,13 +146,6 @@ jobs:
         uses: entur/gha-npmjs/.github/actions/prepare-packages@v1
         with:
           package_manager: npm
-
-  publish-dry-run:
-    needs: build
-    uses: entur/gha-npmjs/.github/workflows/publish.yml@v1
-    with:
-      artifact_name: ${{ needs.build.outputs.artifact_name }}
-      dry_run: true
 ```
 
 ### Step 4: Release
@@ -365,9 +353,9 @@ Add a job between `build` and `publish`. It downloads the artifact, so it tests 
 
 | Problem | Fix |
 | --- | --- |
-| Run fails with `startup_failure` and no jobs start | Add all four permissions from [step 1](#step-1-add-the-release-workflow) to the calling workflow. |
+| Run fails with `startup_failure` and no jobs start | Add the top-level permissions and the `publish` job's `id-token: write` from [step 1](#step-1-add-the-release-workflow). |
 | `npm publish` fails with an authentication error | Check the trusted publisher on npmjs. The workflow filename must match the file that calls `publish.yml`. |
-| Build checks out the default branch instead of the tag | With manifest mode, `path` is not one of the released packages, so release-please has no `tag_name` for it. Check out `github.sha` instead, see [Monorepo](#monorepo). |
+| Build checks out the default branch instead of the tag | Manifest mode has no single `tag_name`, so check out `github.sha` instead, see [Monorepo](#monorepo). |
 | `release_type is 'manifest' but .release-please-manifest.json was not found` | Put the manifest at `path`, set `manifest_file`, or list packages with `packages` on the `prepare-packages` step. |
 | `depend on each other in a cycle` | Remove the dependency cycle between the released packages. |
 | `was packed with unresolved workspace: ranges` | Set `package_manager` on the `prepare-packages` step to the package manager that owns the workspace. |

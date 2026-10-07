@@ -5,9 +5,9 @@ workspaces under `packages/`, `lerna.json` for linking and running tasks, and re
 [manifest mode](https://github.com/googleapis/release-please/blob/main/docs/manifest-releaser.md) with the
 `node-workspace` plugin, so each package gets its own version, tag and changelog.
 
-`gha-npmjs/release` is exercised against this fixture in `.github/workflows/ci.yml` with `dry_run: true`. The
-publish step discovers the packages from `.release-please-manifest.json`, so a release publishes exactly the
-packages release-please bumped and skips the ones already on npmjs.
+`.github/workflows/ci.yml` runs the `prepare-packages` action and `publish.yml` against this fixture with
+`dry_run: true`. `prepare-packages` reads the packages from `.release-please-manifest.json`, and `publish.yml` skips
+the ones already on npmjs, so a release publishes exactly the packages release-please bumped.
 
 The root `build` script runs `npm run build --workspaces` instead of `lerna run build` to keep the fixture's
 lockfile small — real consumers keep `lerna` as a devDependency and the workflow runs whatever the root

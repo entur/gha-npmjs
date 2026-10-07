@@ -15,11 +15,11 @@
 
 - Ensure the PR description clearly describes the problem and solution. Include the relevant issue number if applicable
 
-- New behavior should be covered by a job in `.github/workflows/ci.yml` running against the fixture package in `fixture/`
+- New behavior should be covered by a job in `.github/workflows/ci.yml` running against the fixtures in `fixture/`, see [`fixture/README.md`](../fixture/README.md)
 
 #### **Did you fix whitespace, format code, or make a purely cosmetic patch?**
 
-- Prepend your PR with `docs:` for documentation, `chore:` for maintenance tasks and `style:` for renaming and simple refactoring
+- Prepend your PR with `docs:` for documentation, `chore:` for maintenance tasks and `style:` for formatting and `refactor:` for renaming and simple refactoring
 
 #### **Do you intend to add a new feature or change an existing one?**
 
