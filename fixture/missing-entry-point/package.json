@@ -1,0 +1,10 @@
+{
+  "name": "@entur/gha-npmjs-fixture-missing-entry-point",
+  "version": "0.0.0",
+  "description": "Fixture whose main points at dist/index.js, which is never built, so prepare-packages must fail. Never published.",
+  "license": "EUPL-1.2",
+  "main": "dist/index.js",
+  "files": [
+    "dist"
+  ]
+}

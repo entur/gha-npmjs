@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.release.outputs.tag_name }}
-      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+      - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
         with:
           cache: false
       - run: npm ci
@@ -64,7 +64,8 @@ A pnpm monorepo in release-please manifest mode adds `release_type: manifest`. S
    `release_type: manifest`, otherwise `path`.
 2. Orders them so dependencies come first. Fails on a dependency cycle.
 3. Packs each package with `package_manager`. pnpm, yarn and bun replace `workspace:` ranges with real versions. Fails
-   if a `workspace:` range is left.
+   if a `workspace:` range is left, or if a file that `main`, `module`, `types`, `typings`, `bin` or `exports` points
+   at is not in the tarball.
 4. Uploads the tarballs and `publish-order.tsv` as an artifact, kept for 1 day. Packages with `"private": true` are
    listed but not packed.
 
