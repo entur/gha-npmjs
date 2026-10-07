@@ -64,7 +64,8 @@ A pnpm monorepo in release-please manifest mode adds `release_type: manifest`. S
    `release_type: manifest`, otherwise `path`.
 2. Orders them so dependencies come first. Fails on a dependency cycle.
 3. Packs each package with `package_manager`. pnpm, yarn and bun replace `workspace:` ranges with real versions. Fails
-   if a `workspace:` range is left.
+   if a `workspace:` range is left, or if a file that `main`, `module`, `types`, `bin` or `exports` points at is not
+   in the tarball.
 4. Uploads the tarballs and `publish-order.tsv` as an artifact, kept for 1 day. Packages with `"private": true` are
    listed but not packed.
 

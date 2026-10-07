@@ -359,4 +359,5 @@ Add a job between `build` and `publish`. It downloads the artifact, so it tests 
 | `release_type is 'manifest' but .release-please-manifest.json was not found` | Put the manifest at `path`, set `manifest_file`, or list packages with `packages` on the `prepare-packages` step. |
 | `depend on each other in a cycle` | Remove the dependency cycle between the released packages. |
 | `was packed with unresolved workspace: ranges` | Set `package_manager` on the `prepare-packages` step to the package manager that owns the workspace. |
+| `points at files that are not in the tarball` | Build before `prepare-packages`, and make sure `files` in `package.json` includes the build output. |
 | Provenance error when publishing | Your repository is not public. Remove `provenance: true`. |

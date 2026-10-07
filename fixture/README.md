@@ -1,7 +1,7 @@
 # Fixtures
 
 Test packages the prepare-packages action and publish workflow run against in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), always
-with `dry_run: true` so nothing reaches npmjs. Every fixture pins its toolchain in `mise.toml` and commits its
+with `dry_run: true` so nothing reaches npmjs. Every fixture pins its toolchain in `mise.toml`, and every fixture that installs commits its
 lockfile, so CI's frozen-lockfile install is exercised for real.
 
 | Fixture | Package manager | Covers |
@@ -14,6 +14,7 @@ lockfile, so CI's frozen-lockfile install is exercised for real.
 | [`monorepo-pnpm`](monorepo-pnpm) | pnpm workspaces | `workspace:*` ranges pinned to the exact version by `pnpm pack` before publish |
 | [`monorepo-yarn`](monorepo-yarn) | yarn 4 workspaces | `workspace:*` ranges pinned to the exact version by `yarn pack` before publish |
 | [`monorepo-bun`](monorepo-bun) | bun workspaces | `workspace:*` ranges pinned to the exact version by `bun pm pack` before publish |
+| [`missing-entry-point`](missing-entry-point) | npm | `main` points at a file that is not packed, so `prepare-packages` must fail |
 
 The publish job always uploads through the npm CLI, since trusted publishing (OIDC) is an npm CLI feature. The prepare-packages
 action packs each tarball with the fixture's package manager, so for pnpm, yarn and bun `workspace:` ranges are rewritten
