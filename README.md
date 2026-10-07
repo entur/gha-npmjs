@@ -161,6 +161,10 @@ minutes later.
 
 Each example only shows what changes in `cd.yml`. Keep the rest from [step 1](#step-1-add-the-release-workflow).
 
+For complete workflows that publish real packages to npmjs, see
+[`entur/npmjs-packages-release-tests`](https://github.com/entur/npmjs-packages-release-tests). It has one release and
+one pull request workflow each for npm, yarn, bun and a yarn + lerna monorepo.
+
 ### Package in a subdirectory
 
 Set `path` on `release` and on the `prepare-packages` step, and run your install and build there:
