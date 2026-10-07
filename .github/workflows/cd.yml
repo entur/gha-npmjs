@@ -11,7 +11,7 @@ permissions:
   id-token: write
 jobs:
   release:
-    uses: entur/gha-meta/.github/workflows/release.yml@c14eef7f4d90ed1be2c1df4dfb0927322bcbb3ba # v1.9.0
+    uses: entur/gha-meta/.github/workflows/release.yml@c3ca051ef943942321084a21ec919bc8097dfd92 # v1.9.1
   update-docs:
     needs: release
     if: needs.release.outputs.releases_created == 'false' && needs.release.outputs.prs_created == 'true'
