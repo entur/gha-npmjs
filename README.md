@@ -39,8 +39,8 @@ You build your package the way you like. gha-npmjs packs and publishes it. Use i
 3. Your build job checks out the tag, installs and builds. Its last step, the `prepare-packages` action, packs the packages.
 4. `publish.yml` uploads the tarballs to npmjs.
 
-Build and publish only run when a release was created. Pull requests can build and pack, see
-[step 3](#step-3-test-it-from-a-pull-request-optional).
+Build and publish only run when a release was created. To catch build and packing errors before that, run the build
+job on pull requests too, see [step 3](#step-3-test-it-from-a-pull-request-optional).
 
 ## Setup
 
