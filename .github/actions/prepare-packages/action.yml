@@ -188,7 +188,7 @@ runs:
             bun)  (cd "$package_dir" && bun pm pack --destination "$pack_dir") ;;
           esac
 
-          packed="$(find "$pack_dir" -name '*.tgz' -maxdepth 1 | head -n1)"
+          packed="$(find "$pack_dir" -maxdepth 1 -name '*.tgz' | head -n1)"
           if [ -z "$packed" ]; then
             echo "::error::$GHA_NPMJS_PACKAGE_MANAGER pack produced no tarball for $package_name"
             exit 1

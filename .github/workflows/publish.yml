@@ -105,13 +105,13 @@ jobs:
               continue
             fi
 
-            # A monorepo release bumps only some packages, so the others are already on npmjs.
-            # Skip them instead of failing.
             if [ "$GHA_NPMJS_DIST_TAG" = "latest" ] && [[ "$package_version" == *-* ]]; then
               echo "::error::$package_name@$package_version is a prerelease and would be published as latest. Set dist_tag to another tag, e.g. next."
               exit 1
             fi
 
+            # A monorepo release bumps only some packages, so the others are already on npmjs.
+            # Skip them instead of failing.
             if [ "$GHA_NPMJS_SKIP_PUBLISHED" = "true" ] && npm view "$package_name@$package_version" version > /dev/null 2>&1; then
               echo "Skipping $package_name@$package_version: already published"
               echo "| $package_name | $package_version | skipped (already published) |" >> "$GITHUB_STEP_SUMMARY"
