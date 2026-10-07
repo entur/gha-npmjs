@@ -194,12 +194,15 @@ runs:
             exit 1
           fi
 
+          # Read with $(...) instead of process substitution, so a failing tar or jq stops the step.
+          packed_manifest="$(tar -xzOf "$packed" package/package.json)"
+          packed_files="$(tar -tzf "$packed" | sed 's|^package/||')"
+
           # Stop if the packed package.json still has a `workspace:` range.
-          packed_workspace_ranges="$(tar -xzOf "$packed" package/package.json \
-            | jq -r '[.dependencies, .devDependencies, .peerDependencies, .optionalDependencies]
+          packed_workspace_ranges="$(jq -r '[.dependencies, .devDependencies, .peerDependencies, .optionalDependencies]
                      | map(select(. != null) | to_entries) | flatten
                      | map(select(.value | tostring | startswith("workspace:")))
-                     | map("\(.key)@\(.value)") | join(", ")')"
+                     | map("\(.key)@\(.value)") | join(", ")' <<< "$packed_manifest")"
 
           if [ -n "$packed_workspace_ranges" ]; then
             echo "::error::$package_name was packed with unresolved workspace: ranges ($packed_workspace_ranges). Publishing it would break every consumer install."
@@ -208,20 +211,20 @@ runs:
 
           # Stop if package.json points at a file that is not in the tarball, e.g. dist/ was not
           # built or is left out by `files`. The package would install but fail to import.
-          # A path also counts as packed with .js, .json or /index.js added, like node resolves main.
-          # ponytail: skips exports patterns with `*`; use publint if those need checking.
-          packed_files="$(tar -tzf "$packed" | sed 's|^package/||')"
+          # A path also counts as packed with an extension or /index added, like node and tsc
+          # resolve it, and "." means index. Exports patterns with `*` are not checked.
+          entry_points="$(jq -r '[.main, .module, .types, .typings, .bin, .exports]
+                     | [.. | strings | select(contains("*") | not)
+                        | ltrimstr("./") | rtrimstr("/") | if . == "" or . == "." then "index" else . end]
+                     | unique[]' <<< "$packed_manifest")"
           missing_files=""
           while IFS= read -r entry_point; do
             [ -z "$entry_point" ] && continue
-            for candidate in "$entry_point" "$entry_point.js" "$entry_point.json" "$entry_point/index.js"; do
-              grep -qxF "$candidate" <<< "$packed_files" && continue 2
+            for suffix in "" .js .json .node .d.ts /index.js /index.json /index.d.ts; do
+              grep -qxF -e "$entry_point$suffix" <<< "$packed_files" && continue 2
             done
             missing_files="$missing_files $entry_point"
-          done < <(tar -xzOf "$packed" package/package.json \
-            | jq -r '[.main, .module, .types, .typings, .bin, .exports]
-                     | [.. | strings | select(contains("*") | not) | ltrimstr("./") | rtrimstr("/")]
-                     | unique[]')
+          done <<< "$entry_points"
 
           if [ -n "$missing_files" ]; then
             echo "::error::$package_name points at files that are not in the tarball:$missing_files. Check that the build ran and that \`files\` in package.json includes them."

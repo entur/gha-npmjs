@@ -105,13 +105,18 @@ jobs:
           packages: ${{ matrix.packages }}
           artifact_name: tarballs-${{ matrix.name }}
 
-  # main points at dist/index.js, which is never built. prepare-packages must fail before uploading.
+  # main points at dist/index.js, which is never built. prepare-packages must fail on it, then pass
+  # once only that file is added, which proves the entry-point check caused the failure.
   missing-entry-point:
     name: Fail on missing entry point
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
+    defaults:
+      run:
+        shell: bash --noprofile --norc -euo pipefail {0}
+        working-directory: fixture/missing-entry-point
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -121,7 +126,7 @@ jobs:
           working_directory: fixture/missing-entry-point
           cache: false
 
-      - id: prepare-packages
+      - id: missing
         uses: ./.github/actions/prepare-packages
         continue-on-error: true
         with:
@@ -129,10 +134,18 @@ jobs:
           package_manager: npm
 
       - name: Expect prepare-packages to fail
-        if: steps.prepare-packages.outcome != 'failure'
+        if: steps.missing.outcome != 'failure'
         run: |
           echo "::error::prepare-packages packed a package whose main is missing from the tarball"
           exit 1
+
+      - name: Add the missing entry point
+        run: mkdir -p dist && echo "module.exports = () => 'fixture';" > dist/index.js
+
+      - uses: ./.github/actions/prepare-packages
+        with:
+          path: fixture/missing-entry-point
+          package_manager: npm
 
   publish:
     name: Publish ${{ matrix.name }}

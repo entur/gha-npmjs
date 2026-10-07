@@ -1,8 +1,9 @@
 # Fixtures
 
-Test packages the prepare-packages action and publish workflow run against in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), always
-with `dry_run: true` so nothing reaches npmjs. Every fixture pins its toolchain in `mise.toml`, and every fixture that installs commits its
-lockfile, so CI's frozen-lockfile install is exercised for real.
+Test packages the prepare-packages action and publish workflow run against in
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml), always with `dry_run: true` so nothing reaches npmjs. Every
+fixture pins its toolchain in `mise.toml`, and every fixture that installs commits its lockfile, so CI's
+frozen-lockfile install is exercised for real.
 
 | Fixture | Package manager | Covers |
 | --- | --- | --- |

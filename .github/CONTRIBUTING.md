@@ -19,7 +19,7 @@
 
 #### **Did you fix whitespace, format code, or make a purely cosmetic patch?**
 
-- Prepend your PR with `docs:` for documentation, `chore:` for maintenance tasks and `style:` for formatting and `refactor:` for renaming and simple refactoring
+- Prepend your PR with `docs:` for documentation, `chore:` for maintenance tasks, `style:` for formatting and `refactor:` for renaming and simple refactoring
 
 #### **Do you intend to add a new feature or change an existing one?**
 
