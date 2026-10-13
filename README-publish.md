@@ -5,11 +5,11 @@ Publish the tarballs from the [`prepare-packages` action](README-prepare-package
 no scripts from your repository or dependencies. It is the only job with `id-token: write`.
 
 Configure the trusted publisher on npmjs with the filename of your top-level workflow, the one that calls
-`publish.yml`, see [setup](README.md#step-2-configure-the-trusted-publisher-on-npmjs).
+`publish.yml`, see [setup](README.md#2-add-the-trusted-publisher-on-npmjs).
 
 ## Usage
 
-See the [setup guide](README.md#setup) for the full `cd.yml`.
+Full `cd.yml`: [README setup](README.md#setup).
 
 ```yml
 jobs:

@@ -1,52 +1,19 @@
 # `gha-npmjs`
 
-Release your npm package with [release-please](https://github.com/googleapis/release-please) and publish it to
-[npmjs.com](https://www.npmjs.com) with [trusted publishing](https://docs.npmjs.com/trusted-publishers). No npm token
+Publish your npm package to [npmjs.com](https://www.npmjs.com) when you merge a release pull request. No npm token
 needed.
 
-You build your package the way you like. gha-npmjs packs and publishes it. Use it together with
-[`entur/gha-meta`'s `release.yml`](https://github.com/entur/gha-meta), which runs release-please:
+- **You** build the package.
+- **gha-npmjs** packs it and publishes it with [trusted publishing](https://docs.npmjs.com/trusted-publishers).
+- **[release-please](https://github.com/googleapis/release-please)** (through [`entur/gha-meta`](https://github.com/entur/gha-meta)) picks the version.
 
-| Piece | Does | Permissions |
-| --- | --- | --- |
-| [`gha-meta/release.yml`](https://github.com/entur/gha-meta) | Runs release-please: opens the release pull request, creates the tag and GitHub release | `contents`/`pull-requests`/`issues`: write |
-| Your build job + [`prepare-packages` action](README-prepare-packages.md) | You check out, install and build. `prepare-packages` resolves the packages, packs them in dependency order and uploads them | `contents: read` |
-| [`publish.yml`](README-publish.md) | Uploads the tarballs to npmjs. No checkout, runs nothing from your repository | `id-token: write` |
-
-## Contents
-
-- [How it works](#how-it-works)
-- [Setup](#setup)
-  - [Step 1: Add the release workflow](#step-1-add-the-release-workflow)
-  - [Step 2: Configure the trusted publisher on npmjs](#step-2-configure-the-trusted-publisher-on-npmjs)
-  - [Step 3: Test it from a pull request (optional)](#step-3-test-it-from-a-pull-request-optional)
-  - [Step 4: Release](#step-4-release)
-- [Examples](#examples)
-  - [Package in a subdirectory](#package-in-a-subdirectory)
-  - [pnpm, yarn or bun](#pnpm-yarn-or-bun)
-  - [Monorepo](#monorepo)
-  - [Prerelease dist-tag](#prerelease-dist-tag)
-  - [Provenance](#provenance)
-  - [Test the tarballs before publishing](#test-the-tarballs-before-publishing)
-- [Good to know](#good-to-know)
-- [Troubleshooting](#troubleshooting)
-
-## How it works
-
-1. You push to `main`. release-please opens or updates a release pull request, with the version bump taken from your
-   [conventional commits](https://www.conventionalcommits.org).
-2. You merge the release pull request. release-please creates the tag and the GitHub release.
-3. Your build job checks out the tag, installs and builds. Its last step, the `prepare-packages` action, packs the packages.
-4. `publish.yml` uploads the tarballs to npmjs.
-
-Build and publish only run when a release was created. To catch build and packing errors before that, run the build
-job on pull requests too, see [step 3](#step-3-test-it-from-a-pull-request-optional).
+Want the details? Read [How it works](docs/how-it-works.md).
 
 ## Setup
 
-### Step 1: Add the release workflow
+### 1. Add `.github/workflows/cd.yml`
 
-Create `.github/workflows/cd.yml`. The build job is yours, this one uses [mise](https://mise.jdx.dev) and npm:
+Copy this. Change the `npm ci` and `npm run build` lines if you build differently.
 
 ```yml
 name: CD
@@ -65,7 +32,7 @@ jobs:
   release:
     uses: entur/gha-meta/.github/workflows/release.yml@v1
     with:
-      release_type: node # bumps the version in package.json. gha-meta's default is simple
+      release_type: node
 
   build:
     needs: release
@@ -78,7 +45,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.release.outputs.tag_name }} # build the release tag, not the branch head
+          ref: ${{ needs.release.outputs.tag_name }}
       - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
         with:
           cache: false
@@ -93,298 +60,63 @@ jobs:
     needs: build
     permissions:
       contents: read
-      id-token: write # trusted publishing (OIDC)
+      id-token: write
     uses: entur/gha-npmjs/.github/workflows/publish.yml@v1
     with:
       artifact_name: ${{ needs.build.outputs.artifact_name }}
 ```
 
-The three top-level permissions are required by gha-meta's `release.yml`. Only the `publish` job asks for
-`id-token: write`, so it is the only job that can get an id-token. See [gha-meta](https://github.com/entur/gha-meta)
-for the release inputs and outputs.
+> [!IMPORTANT]
+> Only the `publish` job gets `id-token: write`. Never add it to the `build` job.
 
-> [!TIP]
-> Your package builds in `prepack` (`"prepack": "npm run build"`)? Drop the `npm run build` step, `prepare-packages`
-> runs it when it packs. Without `prepack`, keep the step, or the tarball is packed without your build output.
+### 2. Add the trusted publisher on npmjs
 
-### Step 2: Configure the trusted publisher on npmjs
-
-On npmjs.com, open your package → **Settings** → **Trusted publisher** → **GitHub Actions**:
+On npmjs.com: your package → **Settings** → **Trusted publisher** → **GitHub Actions**.
 
 | Field | Value |
 | --- | --- |
 | Organization or user | `entur` |
 | Repository | your repository name |
-| Workflow filename | `cd.yml` (the file from step 1) |
+| Workflow filename | `cd.yml` |
 | Environment | leave empty |
 
 > [!NOTE]
-> A brand new package must be published once by hand before you can configure a trusted publisher.
+> A brand new package must be published once by hand first.
 
-### Step 3: Test it from a pull request (optional)
+### 3. Release
 
-Build and pack on every pull request, so a broken build or an unresolved `workspace:` range fails before release.
-Nothing is released or published. Create `.github/workflows/ci.yml` with the same `build` steps as `cd.yml`,
-without `needs`, `if` and the checkout `ref`:
+1. Merge a pull request to `main`.
+2. release-please opens a release pull request. Merge it.
+3. The new version is on npmjs a few minutes later.
 
-```yml
-name: CI
+## Using something else?
 
-on:
-  pull_request:
-
-permissions:
-  contents: read
-
-jobs:
-  build:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
-        with:
-          cache: false
-      - run: npm ci
-      - run: npm run build
-      - id: prepare-packages
-        uses: entur/gha-npmjs/.github/actions/prepare-packages@v1
-        with:
-          package_manager: npm
-```
-
-### Step 4: Release
-
-Merge to `main`, then merge the release pull request that release-please opens. The new version is on npmjs a few
-minutes later.
-
-## Examples
-
-Each example only shows what changes in `cd.yml`. Keep the rest from [step 1](#step-1-add-the-release-workflow).
-
-For complete workflows that publish real packages to npmjs, see
-[`entur/npmjs-packages-release-tests`](https://github.com/entur/npmjs-packages-release-tests). It has one release and
-one pull request workflow each for npm, yarn, bun and a yarn + lerna monorepo.
-
-### Package in a subdirectory
-
-release-please ignores `path` outside manifest mode and looks for `package.json` at the repository root. Use manifest
-mode with a single package instead:
-
-```yml
-  release:
-    with:
-      release_type: manifest
-
-  build:
-    defaults:
-      run:
-        working-directory: packages/amazing-lib
-    steps:
-      # ...checkout, toolchain, install, build
-      - id: prepare-packages
-        uses: entur/gha-npmjs/.github/actions/prepare-packages@v1
-        with:
-          package_manager: npm
-          release_type: manifest
-```
-
-Add `release-please-config.json` and `.release-please-manifest.json` at the repository root:
-
-```json
-{
-  "packages": {
-    "packages/amazing-lib": { "release-type": "node" }
-  }
-}
-```
-
-```json
-{
-  "packages/amazing-lib": "1.0.0"
-}
-```
-
-With a single package, `needs.release.outputs.tag_name` is that package's tag, so keep the checkout `ref` from step 1.
-
-### pnpm, yarn or bun
-
-Install and build with your package manager, and tell `prepare-packages` which one it is. `package_manager` is
-required, there is no default:
-
-```yml
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm run build
-      - id: prepare-packages
-        uses: entur/gha-npmjs/.github/actions/prepare-packages@v1
-        with:
-          package_manager: pnpm
-```
-
-| `package_manager` | Example |
+| You use | See |
 | --- | --- |
-| `npm` | [`fixture/npm-package`](fixture/npm-package) |
-| `pnpm` | [`fixture/pnpm-package`](fixture/pnpm-package) |
-| `yarn` | [`fixture/yarn-package`](fixture/yarn-package) |
-| `bun` | [`fixture/bun-package`](fixture/bun-package) |
+| pnpm, yarn or bun | [Examples: pnpm, yarn or bun](docs/examples.md#pnpm-yarn-or-bun) |
+| A monorepo | [Examples: monorepo](docs/examples.md#monorepo) |
+| A package in a subfolder | [Examples: package in a subfolder](docs/examples.md#package-in-a-subfolder) |
+| Beta / prerelease versions | [Examples: prerelease](docs/examples.md#prerelease-versions) |
+| Checks on pull requests | [Examples: test on pull requests](docs/examples.md#test-on-pull-requests) |
 
-Packing uses your package manager, so pnpm, yarn and bun replace `workspace:` ranges. Publishing always uses the npm
-CLI.
-
-### Monorepo
-
-Use release-please [manifest mode](https://github.com/googleapis/release-please/blob/main/docs/manifest-releaser.md).
-Each package gets its own version, tag and changelog. Set `release_type: manifest` on `release` and on the `prepare-packages` step:
-
-```yml
-  release:
-    with:
-      release_type: manifest
-
-  build:
-    steps:
-      # No single tag_name in manifest mode, so build the commit that triggered the release
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
-      # ...toolchain
-      - run: yarn install --immutable
-      - run: yarn workspaces foreach --all --topological run build
-      - id: prepare-packages
-        uses: entur/gha-npmjs/.github/actions/prepare-packages@v1
-        with:
-          release_type: manifest
-          package_manager: yarn
-```
-
-Add these two files at the repository root:
-
-```sh
-.
-├── package.json
-├── release-please-config.json
-├── .release-please-manifest.json
-└── packages
-    ├── common
-    │   └── package.json
-    └── util
-        └── package.json
-```
-
-`release-please-config.json`:
-
-```json
-{
-  "release-type": "node",
-  "tag-separator": "@",
-  "include-v-in-tag": false,
-  "packages": {
-    "packages/common": { "package-name": "@entur/common", "component": "@entur/common" },
-    "packages/util": { "package-name": "@entur/util", "component": "@entur/util" }
-  },
-  "plugins": ["node-workspace"]
-}
-```
-
-`.release-please-manifest.json`:
-
-```json
-{
-  "packages/common": "1.0.0",
-  "packages/util": "1.0.0"
-}
-```
-
-What gets published:
-
-- Every package in `.release-please-manifest.json` whose version is not on npmjs yet.
-- Packages already on npmjs are skipped. Set `skip_published: false` on `publish` to fail instead.
-- Packages with `"private": true` are always skipped.
-
-To pack a fixed list instead of the whole manifest, set `packages` on the `prepare-packages` step:
-
-```yml
-      - id: prepare-packages
-        uses: entur/gha-npmjs/.github/actions/prepare-packages@v1
-        with:
-          package_manager: npm
-          packages: |
-            packages/util
-            packages/common
-```
-
-Working examples: [`fixture/monorepo-npm`](fixture/monorepo-npm), [`fixture/monorepo-pnpm`](fixture/monorepo-pnpm),
-[`fixture/monorepo-yarn`](fixture/monorepo-yarn) and [`fixture/monorepo-bun`](fixture/monorepo-bun).
-
-### Prerelease dist-tag
-
-By default no `--tag` is passed, so npm publishes under `latest` and refuses to publish a prerelease version such as
-`2.0.0-beta.1`. Set `dist_tag` to publish prereleases. `publish.yml` also fails if a prerelease would be published as
-`latest`:
-
-```yml
-  publish:
-    with:
-      artifact_name: ${{ needs.build.outputs.artifact_name }}
-      dist_tag: next
-```
-
-### Provenance
-
-Provenance is off by default, because it only works from a public repository. To turn it on:
-
-```yml
-  publish:
-    with:
-      artifact_name: ${{ needs.build.outputs.artifact_name }}
-      provenance: true
-```
-
-### Test the tarballs before publishing
-
-Add a job between `build` and `publish`. It downloads the artifact, so it tests exactly what gets published:
-
-```yml
-  test-tarballs:
-    needs: build
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: ${{ needs.build.outputs.artifact_name }}
-          path: tarballs
-      - run: ls tarballs # your tests here
-
-  publish:
-    needs: [build, test-tarballs]
-```
-
-## Good to know
-
-- **Build and publish are separate jobs.** Your build job installs, builds and packs without an id-token.
-  `publish.yml` only uploads those tarballs. It has no checkout and runs no scripts from your repository or
-  dependencies, so a compromised dependency can never publish. Never add `id-token: write` to the build job.
-- **Publishing always uses the npm CLI.** Trusted publishing is an npm CLI feature. The publish job uses the npm
-  bundled with node 26.10.0 (npm 11.19.1).
-- **`workspace:` ranges are replaced before publishing.** `prepare-packages` packs each package with your package manager, and
-  pnpm, yarn and bun turn `workspace:*` into the real version. It fails if a `workspace:` range is left.
-- **`prepublishOnly` does not run.** Packages are published as tarballs, and npm skips it then. Move build or test
-  steps to your build job or `prepack`.
-- **Dependencies are published first.** In a monorepo, a package is never published before a package it depends on.
-- **Build the release tag.** Check out `needs.release.outputs.tag_name`. An empty `ref` makes `actions/checkout` build
-  the default branch. With several packages in the manifest there is no single tag, so check out `github.sha`, the
-  release commit.
+All examples: [docs/examples.md](docs/examples.md).
 
 ## Troubleshooting
 
 | Problem | Fix |
 | --- | --- |
-| Run fails with `startup_failure` and no jobs start | Add the top-level permissions and the `publish` job's `id-token: write` from [step 1](#step-1-add-the-release-workflow). |
-| `npm publish` fails with an authentication error | Check the trusted publisher on npmjs. The workflow filename must match the file that calls `publish.yml`. |
-| Build checks out the default branch instead of the tag | With several packages in the manifest there is no single `tag_name`, so check out `github.sha` instead, see [Monorepo](#monorepo). |
-| `release_type is 'manifest' but .release-please-manifest.json was not found` | Put the manifest at `path`, set `manifest_file`, or list packages with `packages` on the `prepare-packages` step. |
-| `depend on each other in a cycle` | Remove the dependency cycle between the released packages. |
-| `was packed with unresolved workspace: ranges` | Set `package_manager` on the `prepare-packages` step to the package manager that owns the workspace. |
-| `points at files that are not in the tarball` | Build before `prepare-packages`, and make sure `files` in `package.json` includes the build output. |
-| Provenance error when publishing | Your repository is not public. Remove `provenance: true`. |
+| Run fails with `startup_failure` and no jobs start | Copy the `permissions` from [step 1](#1-add-githubworkflowscdyml) exactly. |
+| `npm publish` fails with an authentication error | The workflow filename on npmjs must match your file, for example `cd.yml`. |
+| Build checks out the default branch instead of the tag | In a monorepo, check out `github.sha`. See [Monorepo](docs/examples.md#monorepo). |
+| `release_type is 'manifest' but .release-please-manifest.json was not found` | Put the manifest at `path`, set `manifest_file`, or set `packages` on `prepare-packages`. |
+| `depend on each other in a cycle` | Remove the dependency cycle between your packages. |
+| `was packed with unresolved workspace: ranges` | Set `package_manager` to the one that installed your workspace. |
+| `points at files that are not in the tarball` | Build before `prepare-packages`, and add the build output to `files` in `package.json`. |
+| Provenance error | Your repository is not public. Remove `provenance: true`. |
+
+## Reference
+
+- [`prepare-packages` action](README-prepare-packages.md): inputs and outputs
+- [`publish.yml` workflow](README-publish.md): inputs
+- [`gha-meta`](https://github.com/entur/gha-meta): release inputs and outputs
+- [`entur/npmjs-packages-release-tests`](https://github.com/entur/npmjs-packages-release-tests): real repositories that use this
