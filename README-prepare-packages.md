@@ -9,7 +9,7 @@ can ever get an npm token.
 
 ## Usage
 
-See the [setup guide](README.md#setup) for the full `cd.yml`.
+Full `cd.yml`: [README setup](README.md#setup).
 
 ```yml
 jobs:
@@ -34,40 +34,8 @@ jobs:
           package_manager: npm
 ```
 
-### pnpm
-
-Pin pnpm next to node in `mise.toml`, so `mise-action` installs both:
-
-```toml
-[tools]
-node = "24.21.0"
-pnpm = "12.4.2"
-```
-
-Then install, build and prepare with pnpm. `pnpm pack` replaces `workspace:` ranges with real versions:
-
-```yml
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm run build
-      - id: prepare-packages
-        uses: entur/gha-npmjs/.github/actions/prepare-packages@v1
-        with:
-          package_manager: pnpm
-```
-
-A pnpm monorepo in release-please manifest mode adds `release_type: manifest`. See
-[`fixture/pnpm-package`](fixture/pnpm-package) and [`fixture/monorepo-pnpm`](fixture/monorepo-pnpm).
-
-## What it does
-
-1. Resolves the package directories: `packages` if set, otherwise every package in `manifest_file` when
-   `release_type: manifest`, otherwise `path`.
-2. Orders them so dependencies come first. Fails on a dependency cycle.
-3. Packs each package with `package_manager`. pnpm, yarn and bun replace `workspace:` ranges with real versions. Fails
-   if a `workspace:` range is left, or if a file that `main`, `module`, `types`, `typings`, `bin` or `exports` points
-   at is not in the tarball.
-4. Uploads the tarballs and `publish-order.tsv` as an artifact, kept for 1 day. Packages with `"private": true` are
-   listed but not packed.
+For pnpm, yarn, bun or a monorepo, see [examples](docs/examples.md). For what the action does step by step, see
+[How it works](docs/how-it-works.md#what-prepare-packages-does).
 
 ## Inputs
 
