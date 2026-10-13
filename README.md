@@ -93,7 +93,7 @@ On npmjs.com: your package → **Settings** → **Trusted publisher** → **GitH
 
 | You use | See |
 | --- | --- |
-| pnpm, yarn or bun | [Examples: pnpm, yarn or bun](docs/examples.md#pnpm-yarn-or-bun) |
+| npm, pnpm, yarn or bun | [Examples: npm, pnpm, yarn or bun](docs/examples.md#npm-pnpm-yarn-or-bun) |
 | A monorepo | [Examples: monorepo](docs/examples.md#monorepo) |
 | A package in a subfolder | [Examples: package in a subfolder](docs/examples.md#package-in-a-subfolder) |
 | Beta / prerelease versions | [Examples: prerelease](docs/examples.md#prerelease-versions) |
@@ -106,7 +106,7 @@ All examples: [docs/examples.md](docs/examples.md).
 | Problem | Fix |
 | --- | --- |
 | Run fails with `startup_failure` and no jobs start | Copy the `permissions` from [step 1](#1-add-githubworkflowscdyml) exactly. |
-| `npm publish` fails with an authentication error | The workflow filename on npmjs must match your file, for example `cd.yml`. |
+| `npm publish` fails with an authentication error | The workflow filename on npmjs must match your file, for example `release.yml` or `publish.yml`. |
 | Build checks out the default branch instead of the tag | In a monorepo, check out `github.sha`. See [Monorepo](docs/examples.md#monorepo). |
 | `release_type is 'manifest' but .release-please-manifest.json was not found` | Put the manifest at `path`, set `manifest_file`, or set `packages` on `prepare-packages`. |
 | `depend on each other in a cycle` | Remove the dependency cycle between your packages. |

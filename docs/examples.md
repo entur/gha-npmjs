@@ -1,8 +1,6 @@
 # Examples
 
-Each example only shows what changes in `cd.yml`. Keep the rest from the [README setup](../README.md#setup).
-
-- [pnpm, yarn or bun](#pnpm-yarn-or-bun)
+- [npm, pnpm, yarn or bun](#npm-pnpm-yarn-or-bun)
 - [Monorepo](#monorepo)
 - [Package in a subfolder](#package-in-a-subfolder)
 - [Prerelease versions](#prerelease-versions)
@@ -12,33 +10,41 @@ Each example only shows what changes in `cd.yml`. Keep the rest from the [README
 
 Full working repositories: [`entur/npmjs-packages-release-tests`](https://github.com/entur/npmjs-packages-release-tests).
 
-## pnpm, yarn or bun
+## npm, pnpm, yarn or bun
 
-Install and build with your package manager. Set `package_manager` to the same one. It is required.
+Install and build with your package manager. Set `package_manager` to the same one.
 
 ```yml
+  release:
+    uses: entur/gha-meta/.github/workflows/release.yml@v1
+    with:
+      release_type: node
+
+  build:
+    steps:
+      # ...checkout, toolchain
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build
       - id: prepare-packages
         uses: entur/gha-npmjs/.github/actions/prepare-packages@v1
         with:
-          package_manager: pnpm
-```
+          package_manager: pnpm # Supports npm, pnpm, yarn or bun.
 
-With mise, pin the package manager next to node in `mise.toml`:
-
-```toml
-[tools]
-node = "24.21.0"
-pnpm = "12.4.2"
+  publish:
+    needs: build
+    permissions:
+      contents: read
+      id-token: write
+    uses: entur/gha-npmjs/.github/workflows/publish.yml@v1
+    with:
+      artifact_name: ${{ needs.build.outputs.artifact_name }}
 ```
 
 | `package_manager` | Example |
 | --- | --- |
-| `npm` | [`fixture/npm-package`](../fixture/npm-package) |
-| `pnpm` | [`fixture/pnpm-package`](../fixture/pnpm-package) |
-| `yarn` | [`fixture/yarn-package`](../fixture/yarn-package) |
-| `bun` | [`fixture/bun-package`](../fixture/bun-package) |
+| `npm` | [`release-npm.yml`](https://github.com/entur/npmjs-packages-release-tests/blob/main/.github/workflows/release-npm.yml) |
+| `yarn` | [`release-yarn.yml`](https://github.com/entur/npmjs-packages-release-tests/blob/main/.github/workflows/release-yarn.yml) |
+| `bun` | [`release-bun.yml`](https://github.com/entur/npmjs-packages-release-tests/blob/main/.github/workflows/release-bun.yml) |
 
 ## Monorepo
 
@@ -49,6 +55,7 @@ Each package gets its own version, tag and changelog. This uses release-please
 
 ```yml
   release:
+    uses: entur/gha-meta/.github/workflows/release.yml@v1
     with:
       release_type: manifest
 
@@ -60,12 +67,21 @@ Each package gets its own version, tag and changelog. This uses release-please
           ref: ${{ github.sha }}
       # ...toolchain
       - run: yarn install --immutable
-      - run: yarn workspaces foreach --all --topological run build
+      - run: yarn run build # root script, for example: lerna run build
       - id: prepare-packages
         uses: entur/gha-npmjs/.github/actions/prepare-packages@v1
         with:
           release_type: manifest
           package_manager: yarn
+
+  publish:
+    needs: build
+    permissions:
+      contents: read
+      id-token: write
+    uses: entur/gha-npmjs/.github/workflows/publish.yml@v1
+    with:
+      artifact_name: ${{ needs.build.outputs.artifact_name }}
 ```
 
 **2. Add `release-please-config.json`** at the repository root:
@@ -98,18 +114,25 @@ Each package gets its own version, tag and changelog. This uses release-please
 - Packages already on npmjs are skipped. Set `skip_published: false` on `publish` to fail instead.
 - Packages with `"private": true` are always skipped.
 
-**Only some packages?** Set `packages` on `prepare-packages`:
+**Only some packages?** Set `packages` on `prepare-packages`. Only the listed packages are published, even if the
+manifest has more:
 
 ```yml
+  build:
+    steps:
+      # ...checkout, toolchain, install, build
+      - id: prepare-packages
+        uses: entur/gha-npmjs/.github/actions/prepare-packages@v1
         with:
-          package_manager: npm
+          release_type: manifest
+          package_manager: yarn
+          # Specify which packages to publish
           packages: |
             packages/util
             packages/common
 ```
 
-Examples: [`monorepo-npm`](../fixture/monorepo-npm), [`monorepo-pnpm`](../fixture/monorepo-pnpm),
-[`monorepo-yarn`](../fixture/monorepo-yarn), [`monorepo-bun`](../fixture/monorepo-bun).
+Example: [`release-lerna.yml`](https://github.com/entur/npmjs-packages-release-tests/blob/main/.github/workflows/release-lerna.yml) (yarn 4 workspaces and Lerna).
 
 ## Package in a subfolder
 
@@ -120,6 +143,7 @@ with one package.
 
 ```yml
   release:
+    uses: entur/gha-meta/.github/workflows/release.yml@v1
     with:
       release_type: manifest
 
@@ -134,6 +158,15 @@ with one package.
         with:
           package_manager: npm
           release_type: manifest
+
+  publish:
+    needs: build
+    permissions:
+      contents: read
+      id-token: write
+    uses: entur/gha-npmjs/.github/workflows/publish.yml@v1
+    with:
+      artifact_name: ${{ needs.build.outputs.artifact_name }}
 ```
 
 Keep the checkout `ref` from the README. With one package, `tag_name` is still set.
@@ -156,16 +189,8 @@ Keep the checkout `ref` from the README. With one package, `tag_name` is still s
 }
 ```
 
-## Prerelease versions
-
-npm refuses to publish a version like `2.0.0-beta.1` as `latest`. Set `dist_tag`:
-
-```yml
-  publish:
-    with:
-      artifact_name: ${{ needs.build.outputs.artifact_name }}
-      dist_tag: next
-```
+Example: [`entur/uniformen`](https://github.com/entur/uniformen/tree/main/packages/uniformen) publishes
+`packages/uniformen` with bun and GHA-NpmJS. See its [`release.yml`](https://github.com/entur/uniformen/blob/main/.github/workflows/release.yml).
 
 ## Provenance
 
@@ -180,9 +205,17 @@ Off by default. It only works from a public repository.
 
 ## Test on pull requests
 
-Build and pack on every pull request. A broken build fails before release. Nothing is published.
+Pack your packages on every pull request, so packing problems show up early. Without this, they only show up after
+you merge the release pull request. Nothing is published.
 
-Create `.github/workflows/ci.yml`. It is the `build` job from `cd.yml` without `needs`, `if` and the checkout `ref`:
+It catches:
+
+- a build that fails
+- `workspace:` ranges that were not replaced
+- entry points (`main`, `module`, `types`, `bin`, `exports`) that point at files missing from the tarball
+- dependency cycles between your packages
+
+Create `.github/workflows/ci.yml`. The steps are the same as the `build` job in `cd.yml`:
 
 ```yml
 name: CI
