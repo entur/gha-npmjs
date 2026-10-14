@@ -248,7 +248,7 @@ runs:
         echo "artifact_name=${GHA_NPMJS_ARTIFACT_NAME:-gha-npmjs-tarballs-$GHA_NPMJS_RUN_ID-$GHA_NPMJS_RUN_ATTEMPT-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')}" >> "$GITHUB_OUTPUT"
 
     - name: Upload tarballs
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: ${{ steps.pack.outputs.artifact_name }}
         path: ${{ runner.temp }}/gha-npmjs-tarballs
