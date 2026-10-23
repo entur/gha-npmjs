@@ -51,9 +51,9 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           # Only runs the npm CLI on finished tarballs, so the build's node version doesn't matter.
-          # Pinned, so the bundled npm is pinned too: node 26.10.0 ships npm 11.19.1, and trusted
+          # Pinned, so the bundled npm is pinned too: node 26.12.1 ships npm 11.20.0, and trusted
           # publishing (OIDC) needs npm 11.5.1 or newer. Bump by hand, Dependabot can't update this.
-          node-version: "26.10.0"
+          node-version: "26.12.1"
           # No caching in a job with an id-token, so a poisoned cache can't reach the OIDC token.
           package-manager-cache: false
 
