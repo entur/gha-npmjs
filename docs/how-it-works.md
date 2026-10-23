@@ -21,7 +21,7 @@ requests. See [Test on pull requests](examples.md#test-on-pull-requests).
 | Your `build` job + [`prepare-packages`](../README-prepare-packages.md) | You check out, install and build. `prepare-packages` packs the packages and uploads them | `contents: read` |
 | [`publish.yml`](../README-publish.md) | Uploads the tarballs to npmjs. No checkout, runs nothing from your repository | `id-token: write` |
 
-The three top-level permissions in `cd.yml` are required by `release.yml`.
+The three top-level permissions in your `release.yml` are required by `gha-meta/release.yml`.
 
 ## Why build and publish are separate jobs
 
