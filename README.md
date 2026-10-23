@@ -11,12 +11,12 @@ Want the details? Read [How it works](docs/how-it-works.md).
 
 ## Setup
 
-### 1. Add `.github/workflows/cd.yml`
+### 1. Add `.github/workflows/release.yml`
 
 Copy this. Change the `npm ci` and `npm run build` lines if you build differently.
 
 ```yml
-name: CD
+name: release
 
 on:
   push:
@@ -46,7 +46,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.release.outputs.tag_name }}
-      - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
+      - uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
         with:
           cache: false
       - run: npm ci
@@ -77,7 +77,7 @@ On npmjs.com: your package → **Settings** → **Trusted publisher** → **GitH
 | --- | --- |
 | Organization or user | `entur` |
 | Repository | your repository name |
-| Workflow filename | `cd.yml` |
+| Workflow filename | `release.yml` |
 | Environment | leave empty |
 
 > [!NOTE]
@@ -105,8 +105,8 @@ All examples: [docs/examples.md](docs/examples.md).
 
 | Problem | Fix |
 | --- | --- |
-| Run fails with `startup_failure` and no jobs start | Copy the `permissions` from [step 1](#1-add-githubworkflowscdyml) exactly. |
-| `npm publish` fails with an authentication error | The workflow filename on npmjs must match your file, for example `release.yml` or `publish.yml`. |
+| Run fails with `startup_failure` and no jobs start | Copy the `permissions` from [step 1](#1-add-githubworkflowsreleaseyml) exactly. |
+| `npm publish` fails with an authentication error | The workflow filename on npmjs must match your file, for example `release.yml`. |
 | Build checks out the default branch instead of the tag | In a monorepo, check out `github.sha`. See [Monorepo](docs/examples.md#monorepo). |
 | `release_type is 'manifest' but .release-please-manifest.json was not found` | Put the manifest at `path`, set `manifest_file`, or set `packages` on `prepare-packages`. |
 | `depend on each other in a cycle` | Remove the dependency cycle between your packages. |

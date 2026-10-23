@@ -51,7 +51,7 @@ Install and build with your package manager. Set `package_manager` to the same o
 Each package gets its own version, tag and changelog. This uses release-please
 [manifest mode](https://github.com/googleapis/release-please/blob/main/docs/manifest-releaser.md).
 
-**1. Change `cd.yml`:**
+**1. Change `release.yml`:**
 
 ```yml
   release:
@@ -139,7 +139,7 @@ Example: [`release-lerna.yml`](https://github.com/entur/npmjs-packages-release-t
 release-please only looks for `package.json` at the repository root. For a package in a subfolder, use manifest mode
 with one package.
 
-**1. Change `cd.yml`:**
+**1. Change `release.yml`:**
 
 ```yml
   release:
@@ -215,7 +215,7 @@ It catches:
 - entry points (`main`, `module`, `types`, `bin`, `exports`) that point at files missing from the tarball
 - dependency cycles between your packages
 
-Create `.github/workflows/ci.yml`. The steps are the same as the `build` job in `cd.yml`:
+Create `.github/workflows/ci.yml`. The steps are the same as the `build` job in your `release.yml`:
 
 ```yml
 name: CI
@@ -231,7 +231,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
+      - uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
         with:
           cache: false
       - run: npm ci

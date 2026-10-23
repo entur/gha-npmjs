@@ -9,7 +9,7 @@ Configure the trusted publisher on npmjs with the filename of your top-level wor
 
 ## Usage
 
-Full `cd.yml`: [README setup](README.md#setup).
+Full `release.yml`: [README setup](README.md#setup).
 
 ```yml
 jobs:

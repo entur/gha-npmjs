@@ -9,7 +9,7 @@ can ever get an npm token.
 
 ## Usage
 
-Full `cd.yml`: [README setup](README.md#setup).
+Full `release.yml`: [README setup](README.md#setup).
 
 ```yml
 jobs:
@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.release.outputs.tag_name }}
-      - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
+      - uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
         with:
           cache: false
       - run: npm ci
