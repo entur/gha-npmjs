@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/entur/gha-npmjs/compare/v1.1.0...v1.1.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* bump publish Node to 26.12.1 (CVE-2026-111497, Node2Shell) ([#18](https://github.com/entur/gha-npmjs/issues/18)) ([9b05b0d](https://github.com/entur/gha-npmjs/commit/9b05b0d79b41ce14d878d7a6a1c814d454c78899))
+
 ## [1.1.0](https://github.com/entur/gha-npmjs/compare/v1.0.0...v1.1.0) (2026-10-07)
 
 
