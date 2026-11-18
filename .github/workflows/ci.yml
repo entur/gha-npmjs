@@ -18,7 +18,7 @@ jobs:
   verify-pr:
     name: Verify PR
     if: ${{ github.event_name == 'pull_request' }}
-    uses: entur/gha-meta/.github/workflows/verify-pr.yml@c3ca051ef943942321084a21ec919bc8097dfd92 # v1.9.1
+    uses: entur/gha-meta/.github/workflows/verify-pr.yml@6c3e7e5d82293ef2bd28c99513be0c2776b941cf # v1.10.0
 
   build:
     name: Build ${{ matrix.name }}
