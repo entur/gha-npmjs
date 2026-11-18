@@ -21,7 +21,7 @@ jobs:
         files:
           - workflow: .github/workflows/publish.yml
             readme: README-publish.md
-    uses: entur/gha-meta/.github/workflows/auto-doc.yml@c3ca051ef943942321084a21ec919bc8097dfd92 # v1.9.1
+    uses: entur/gha-meta/.github/workflows/auto-doc.yml@6c3e7e5d82293ef2bd28c99513be0c2776b941cf # v1.10.0
     with:
       commit_default_author: 'github_actions'
       target_branch: 'release-please--branches--main'
